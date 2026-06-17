@@ -1,0 +1,47 @@
+package storage
+
+import (
+	"fmt"
+
+	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/types"
+	bbolt "go.etcd.io/bbolt"
+)
+
+// PutUTXO inserts or updates a UTXO entry, keyed by its OutPoint.
+func (db *DB) PutUTXO(utxo *types.UTXO) error {
+	data, err := marshalJSON(utxo)
+	if err != nil {
+		return err
+	}
+	key := outpointKey(utxo.OutPoint)
+	return db.bolt.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket(bucketUTXOs).Put(key[:], data)
+	})
+}
+
+// GetUTXO retrieves a UTXO by its OutPoint. Returns (nil, nil) when not found.
+func (db *DB) GetUTXO(op types.OutPoint) (*types.UTXO, error) {
+	var utxo *types.UTXO
+	key := outpointKey(op)
+	err := db.bolt.View(func(tx *bbolt.Tx) error {
+		data := tx.Bucket(bucketUTXOs).Get(key[:])
+		if data == nil {
+			return nil
+		}
+		utxo = new(types.UTXO)
+		return unmarshalJSON(data, utxo)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("storage: GetUTXO: %w", err)
+	}
+	return utxo, nil
+}
+
+// DeleteUTXO removes a UTXO entry. It is a no-op if the OutPoint is not
+// present in the database.
+func (db *DB) DeleteUTXO(op types.OutPoint) error {
+	key := outpointKey(op)
+	return db.bolt.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket(bucketUTXOs).Delete(key[:])
+	})
+}
