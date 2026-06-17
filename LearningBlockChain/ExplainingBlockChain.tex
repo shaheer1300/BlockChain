@@ -1,0 +1,1201 @@
+\documentclass[12pt, a4paper]{article}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{amsmath, amssymb}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{array}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=cyan,
+}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+
+\title{\textbf{Blockchain: A Ground-Up Mastery Guide}\\
+\large Built via Feynman Method for CeDAR (LUMS) Preparation}
+\author{Shaheer}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Phase 1: Foundations}
+% ============================================================
+
+\subsection{The Core Problem Blockchain Solves}
+
+Every financial system in history has relied on a \textbf{trusted middleman} --- a bank,
+a government, a court --- to maintain a record of who owns what. When you send money,
+you are not moving anything physical; you are asking your bank to update a number in
+\emph{their private database}.
+
+The fundamental vulnerabilities of this model:
+\begin{itemize}
+    \item The middleman can be corrupt or coerced.
+    \item The middleman is a single point of failure.
+    \item Access can be denied or frozen.
+    \item Cross-border trust is fragile.
+\end{itemize}
+
+\textbf{Satoshi Nakamoto's insight (2008):} Replace the single trusted middleman with
+\emph{thousands of strangers} each holding an identical copy of the same ledger, all
+of whom must agree before any change is accepted. This is the blockchain.
+
+\begin{center}
+\begin{tabular}{>{\bfseries}l l}
+\toprule
+Traditional System & Blockchain \\
+\midrule
+One private database & Thousands of identical copies \\
+Trust the institution & Trust the math \\
+Single point of failure & No central point to attack \\
+Permission required & Open and permissionless \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ------------------------------------------------------------
+\subsection{Why ``Chain''? The Structure of a Blockchain}
+
+A blockchain is composed of \textbf{blocks} linked in a chain. Each block contains:
+\begin{enumerate}
+    \item A set of \textbf{transactions} (the data).
+    \item The \textbf{hash of the previous block} --- this is the ``chain'' link.
+    \item Its own \textbf{hash} (a fingerprint of its entire contents).
+\end{enumerate}
+
+\begin{verbatim}
+┌──────────────────────┐     ┌──────────────────────┐
+│  BLOCK #2            │     │  BLOCK #3            │
+│  Txns: A→B: 500      │     │  Txns: B→C: 200      │
+│  Prev Hash: [Block1] │◄────│  Prev Hash: [Block2] │
+│  Own Hash:  a3f2c7.. │     │  Own Hash:  7b84fa.. │
+└──────────────────────┘     └──────────────────────┘
+\end{verbatim}
+
+\textbf{Why chaining prevents tampering:} If an attacker modifies any transaction
+in Block 2, Block 2's hash changes entirely. This invalidates Block 3's
+``Prev Hash'' reference, which cascades and breaks every subsequent block.
+The fraud becomes immediately visible to all participants.
+
+Two distinct ideas work together:
+
+\begin{center}
+\begin{tabular}{>{\bfseries}l l}
+\toprule
+Mechanism & What It Prevents \\
+\midrule
+Chaining (linked hashes) & Secretly editing old history \\
+Distribution (thousands of copies) & Any single party controlling the record \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ------------------------------------------------------------
+\subsection{The Hash Function: The Mathematical Fingerprint}
+
+A \textbf{hash function} takes any input and produces a fixed-size output (the hash).
+Bitcoin uses \textbf{SHA-256}, which always produces a 256-bit output.
+
+\textbf{The four critical properties:}
+
+\begin{enumerate}
+    \item \textbf{Deterministic:} The same input always produces the same hash.
+          $H(\text{``input''}) \to$ always the same output.
+
+    \item \textbf{Avalanche Effect:} A single character change causes the entire
+          hash to change completely and unpredictably. There is no gradual drift.
+
+    \item \textbf{Fixed Size:} Regardless of whether the input is one word or
+          one million pages, the output is always the same length (256 bits for SHA-256).
+
+    \item \textbf{One-Way (Pre-image Resistance):} Given a hash $h$, it is
+          computationally infeasible to find an input $x$ such that $H(x) = h$.
+          You cannot reverse-engineer the original data from the fingerprint.
+\end{enumerate}
+
+\textbf{Example --- SHA-256 Avalanche Effect:}
+\begin{center}
+\begin{tabular}{l >{\ttfamily\small}l}
+\toprule
+\textbf{Input} & \textbf{SHA-256 Hash (truncated)} \\
+\midrule
+``Ali owes Shaheer 1000'' & a3f2c7d1...9e8b \\
+``Ali owes Shaheer 1001'' & 7b84fa3c...2d07 \\
+\bottomrule
+\end{tabular}
+\end{center}
+One digit changed. The hash is completely unrecognisable.
+
+\textbf{Why the one-way property is security-critical:}
+\begin{itemize}
+    \item \textbf{Privacy:} No one can read transaction details by inspecting a hash.
+    \item \textbf{Forgery prevention:} An attacker who wants to secretly alter Block 2
+          while keeping its hash identical (so Block 3 remains valid) would need to
+          \emph{reverse} the hash function to engineer a collision. The one-way property
+          makes this computationally infeasible, rendering such forgery impossible.
+\end{itemize}
+
+Formally, a secure hash function satisfies \textbf{collision resistance}: it is
+infeasible to find two distinct inputs $x \neq x'$ such that $H(x) = H(x')$.
+
+% ============================================================
+\section{Phase 2: Consensus Mechanisms}
+% ============================================================
+
+\subsection{The Core Problem: Who Gets to Add Blocks?}
+
+With thousands of strangers on the network, none of whom trust each other, a critical
+question arises: who has the authority to append the next block? Appointing a gatekeeper
+would recreate the centralisation problem. Allowing anyone to add freely would enable
+spam and fraud.
+
+The solution requires a mechanism with one key property:
+
+\begin{center}
+\textbf{Hard to produce. Trivially easy to verify.}
+\end{center}
+
+\begin{itemize}
+    \item \textbf{Hard to produce} $\Rightarrow$ Adding a block costs real effort.
+          A cheater cannot flood the network with fake blocks cheaply.
+    \item \textbf{Easy to verify} $\Rightarrow$ Every node can confirm validity in
+          milliseconds without trusting the producer.
+\end{itemize}
+
+\textbf{Sybil Attack:} If block creation were cheap, a single attacker could
+masquerade as thousands of nodes and dominate the network. The cost of
+production is the defence.
+
+% ------------------------------------------------------------
+\subsection{Proof of Work (PoW)}
+
+Bitcoin's consensus mechanism. The ``puzzle'' is defined using the hash function:
+
+\begin{quote}
+    Find a number $n$ (called a \textbf{nonce}) such that:
+    \[
+        H(\text{block data} \;\|\; n) < T
+    \]
+    where $T$ is a target threshold, equivalent to requiring the hash output
+    to begin with a certain number of leading zeros.
+\end{quote}
+
+\textbf{Example:}
+\begin{verbatim}
+    H(block_data + nonce) = 00000000003a7f2c...   ✓ valid
+    H(block_data + nonce) = 7b84fa3c9d2e1a05...   ✗ invalid
+\end{verbatim}
+
+\textbf{Why this works:}
+\begin{itemize}
+    \item Because hashes are \textbf{one-way}, there is no shortcut. You cannot
+          calculate the correct nonce --- you must guess, billions of times, until
+          a valid hash appears by chance.
+    \item Because hashes are \textbf{deterministic}, anyone can verify the answer
+          by running the hash function exactly once.
+\end{itemize}
+
+The process of competing to find this nonce is called \textbf{mining}.
+
+% ------------------------------------------------------------
+\subsection{The Incentive Structure: Why Miners Are Honest}
+
+A miner who wins (finds the valid nonce) earns:
+\begin{enumerate}
+    \item \textbf{Block reward} --- newly minted Bitcoin, created from nothing.
+          This is the only mechanism by which new Bitcoin enters circulation.
+    \item \textbf{Transaction fees} --- a small fee attached to every transaction
+          by its sender.
+\end{enumerate}
+
+This creates a rational incentive table:
+
+\begin{center}
+\begin{tabular}{l l}
+\toprule
+\textbf{Miner Action} & \textbf{Outcome} \\
+\midrule
+Valid block + transactions included & Block reward + all fees \checkmark \\
+Valid block + empty block            & Block reward only (fees forfeited) \\
+Valid block + fraudulent transactions & Block rejected, zero reward, electricity wasted \texttimes \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Key insight (Mechanism Design):} Satoshi did not ask miners to be honest.
+He constructed the reward structure so that honesty is the \emph{most profitable
+rational strategy}. The system enforces good behaviour through economics, not trust.
+
+% ------------------------------------------------------------
+\subsection{Difficulty Adjustment}
+
+The target threshold $T$ is adjusted automatically every 2016 blocks
+($\approx$ 2 weeks) so that the average time between blocks stays at
+\textbf{10 minutes}, regardless of how much total computing power joins or
+leaves the network.
+
+More miners $\Rightarrow$ puzzles get harder. Fewer miners $\Rightarrow$ puzzles
+get easier.
+
+% ------------------------------------------------------------
+\subsection{The 51\% Attack}
+
+If a single entity controls more than half the network's total computing power
+(hashrate), they can:
+\begin{itemize}
+    \item Consistently solve the puzzle faster than honest miners.
+    \item Propose a secret alternative chain and eventually make it longer.
+    \item Rewrite recent history (double-spend attacks).
+\end{itemize}
+
+This is called a \textbf{51\% attack}. Bitcoin's security therefore scales
+directly with the total honest hashrate on the network. The larger and more
+distributed the network, the more astronomically expensive such an attack becomes.
+
+% ============================================================
+\section{Phase 3: Proof of Stake \& Alternative Consensus}
+% ============================================================
+
+\subsection{The Problem with Proof of Work}
+
+PoW is deliberately wasteful. Billions of hash guesses are computed solely to
+produce a lottery ticket --- the actual computation creates no useful output.
+Bitcoin's annual energy consumption rivals that of entire countries.
+
+\textbf{Research question:} Can we replace ``burning electricity'' with something
+else as proof of legitimate participation?
+
+% ------------------------------------------------------------
+\subsection{Proof of Stake (PoS)}
+
+Instead of expending energy, validators \textbf{lock up} (stake) their coins as
+collateral. The protocol pseudo-randomly selects a validator to propose the next
+block, weighted by stake size:
+
+\[
+P(\text{selected}) \propto \text{stake}_i
+\]
+
+\textbf{Punishment --- Slashing:} If a validator is caught proposing fraudulent
+blocks or signing contradictory blocks, the protocol automatically \textbf{destroys}
+a portion of their staked coins. The attacker does not merely earn nothing --- they
+lose what they committed.
+
+\begin{center}
+\begin{tabular}{l l l}
+\toprule
+\textbf{Property} & \textbf{Proof of Work} & \textbf{Proof of Stake} \\
+\midrule
+Right to add block     & Burn electricity          & Lock up coins \\
+Punishment for cheating & Wasted electricity        & Slashing (coins destroyed) \\
+Energy use             & Enormous                  & $\sim$99.9\% less \\
+Hardware required      & Specialised ASICs         & Ordinary computer \\
+Attack cost            & Buy 51\% of hashrate      & Buy 51\% of all staked coins \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Wealth concentration problem:} A validator's selection probability scales
+with stake. This means wealthier participants earn more rewards, compounding their
+advantage --- a genuine ongoing tension in PoS system design.
+
+Ethereum migrated from PoW to PoS in September 2022 (``The Merge'').
+
+% ------------------------------------------------------------
+\subsection{Delegated Proof of Stake (dPoS)}
+
+\textbf{Motivation:} In plain PoS, hundreds of validators must coordinate to reach
+consensus --- this is slow. dPoS introduces representative democracy to the blockchain.
+
+\textbf{Mechanism:}
+\begin{enumerate}
+    \item Token holders \textbf{vote} to elect a small fixed set of trusted
+          \textbf{delegates} (e.g.\ 21 in EOS).
+    \item Only elected delegates produce blocks, taking turns in a
+          round-robin schedule.
+    \item Token holders can vote out a misbehaving delegate at any time.
+\end{enumerate}
+
+\textbf{Parliament analogy:} Token holders are citizens (voters); delegates are
+elected MPs. Only MPs pass laws (add blocks), but citizens can replace them
+at any election.
+
+\begin{center}
+\begin{tabular}{l l}
+\toprule
+\textbf{Property} & \textbf{dPoS Advantage} \\
+\midrule
+Speed           & Small delegate set $\Rightarrow$ fast consensus \\
+Accountability  & Delegates voted out instantly for misbehaviour \\
+Participation   & Anyone can vote regardless of stake size \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Tradeoff:} Trust is concentrated in a small delegate group --- more
+centralised than pure PoS or PoW.
+
+\textbf{Two mechanisms that constrain a malicious delegate:}
+\begin{enumerate}
+    \item \textbf{Social (Voting):} Token holders immediately vote the delegate out,
+          terminating all future block rewards and their position permanently.
+    \item \textbf{Economic (Slashing):} Provable misbehaviour destroys the stake
+          the delegate deposited to obtain their position. They paid to cheat
+          and lose both the stake and the role.
+\end{enumerate}
+
+\textbf{CeDAR relevance:} The lab's paper on blockchain-enabled data sharing in
+Connected Autonomous Vehicle (CAV) networks used dPoS with reputation schemes
+(Multi-Weight Subjective Logic, beta, sigmoid) layered on top to detect malicious
+nodes --- addressing the centralisation tradeoff through reputation scoring before
+a node is even eligible for delegation.
+
+% ============================================================
+\section{Phase 4: Smart Contracts \& Ethereum}
+% ============================================================
+
+\subsection{The Core Idea}
+
+Bitcoin's blockchain records \emph{who paid whom}. Ethereum extended this: what if the
+blockchain could also \emph{run code}?
+
+A \textbf{smart contract} is a program deployed permanently on the blockchain. No one
+owns it, no one can stop it, and no one can modify it after deployment. When its
+conditions are met, it executes automatically and irreversibly.
+
+\textbf{Two fundamental limitations} (discovered through reasoning):
+\begin{enumerate}
+    \item \textbf{Incomplete contracts:} Code only handles what the programmer
+          anticipated. Real-world edge cases (a draw, a disputed result, a force
+          majeure) have no \texttt{else} clause. A judge can use judgment to fill
+          legal gaps; a smart contract cannot. This is the \textbf{``Code is Law''
+          problem.} Famous example: \emph{The DAO Hack (2016)} --- an attacker
+          drained \$60M by exploiting the exact code as written. No rules were
+          broken, because the code \emph{was} the rules.
+
+    \item \textbf{The Oracle Problem:} A blockchain is a sealed, self-contained
+          system. It cannot read the internet, watch a match, or sense the real
+          world. Any contract that depends on external data requires a trusted
+          data feed called an \textbf{oracle}. But trusting a single oracle
+          re-introduces a centralised middleman. Solutions like \textbf{Chainlink}
+          use decentralised oracle networks with their own staking/slashing
+          mechanisms to make lying economically irrational.
+\end{enumerate}
+
+% ------------------------------------------------------------
+\subsection{Storage and Execution: The EVM}
+
+\textbf{Deployment:} A smart contract is deployed by sending a special transaction
+whose payload contains the compiled contract bytecode. The network stores this code
+permanently at a unique \textbf{contract address}. It cannot be deleted.
+
+\textbf{Execution --- The Ethereum Virtual Machine (EVM):} Every node runs an
+identical virtual machine. When a contract is called, every node executes the same
+bytecode independently and must arrive at the same result. Disagreement results in
+rejection. This mandates that smart contracts be \textbf{deterministic} --- given
+the same inputs, they must always produce the same output. Non-deterministic
+operations (random numbers, system time, external calls) are forbidden without
+special handling.
+
+% ------------------------------------------------------------
+\subsection{Gas: Metered Computation}
+
+\textbf{The halting problem:} A contract with an infinite loop would cause every
+node to compute forever, halting the network.
+
+\textbf{Solution --- Gas:} Every EVM instruction costs a fixed number of gas units.
+The caller pays upfront. Execution stops when gas is exhausted.
+
+\[
+    \text{Transaction Cost (ETH)} = \text{Gas Used} \times \text{Gas Price}
+\]
+
+Gas serves three simultaneous functions:
+\begin{enumerate}
+    \item \textbf{Prevents infinite loops} --- execution halts when funds run out.
+    \item \textbf{Prioritises transactions} --- validators include high-gas-price
+          transactions first (rational economic choice).
+    \item \textbf{Compensates validators} --- gas fees are the transaction fees
+          validators collect per block.
+\end{enumerate}
+
+% ------------------------------------------------------------
+\subsection{Access Control: The Foundational Security Pattern}
+
+The single most important security pattern in smart contract development:
+
+\begin{lstlisting}[language=Solidity, basicstyle=\ttfamily\small,
+                   keywordstyle=\color{blue}, commentstyle=\color{gray}]
+require(msg.sender == authorisedAddress, "Unauthorised");
+\end{lstlisting}
+
+\textbf{What it does:} Before executing any logic, verify \emph{who} is calling.
+\texttt{msg.sender} is the cryptographically verified address of the caller ---
+it cannot be forged. If the check fails, the entire transaction reverts as if it
+never occurred.
+
+\textbf{What it prevents:} Any attacker who tries to impersonate an authorised
+party (e.g.\ an oracle, an owner, a regulator) to trigger fraudulent contract
+execution --- such as calling \texttt{settle(true)} on a bet contract to falsely
+claim a payout.
+
+\textbf{Example --- Cricket Bet Contract:}
+
+\begin{lstlisting}[language=Solidity, basicstyle=\ttfamily\small,
+                   keywordstyle=\color{blue}, commentstyle=\color{gray}]
+contract CricketBet {
+    address payable public shaheer;
+    address payable public ali;
+    address public oracle;
+
+    constructor(address payable _ali, address _oracle) payable {
+        shaheer = payable(msg.sender); // deployer
+        ali     = _ali;
+        oracle  = _oracle;
+    }
+
+    function settle(bool pakistanWon) external {
+        // Only the trusted oracle may call this
+        require(msg.sender == oracle, "Only oracle can settle");
+        if (pakistanWon) {
+            shaheer.transfer(address(this).balance);
+        } else {
+            ali.transfer(address(this).balance);
+        }
+        // Note: draw case unhandled -- incomplete contract problem
+    }
+}
+\end{lstlisting}
+
+Key Solidity primitives:
+\begin{itemize}
+    \item \texttt{msg.sender} --- cryptographically verified caller address.
+    \item \texttt{require()} --- guard clause; reverts entire transaction on failure.
+    \item \texttt{transfer()} --- sends ETH atomically; no bank required.
+    \item \texttt{address(this).balance} --- the ETH held by the contract itself.
+\end{itemize}
+
+% ------------------------------------------------------------
+\subsection{CeDAR Relevance: Smart Contracts as Policy Enforcers}
+
+CeDAR's core research encodes complex organisational access-control policies
+(written in XACML) as smart contracts on Ethereum. The \texttt{require()} pattern
+scales from a single address check to full \textbf{attribute-based access control
+(ABAC)}: before granting a doctor access to a patient's record, the contract
+verifies role, department, time-of-day, patient consent, and audit trail ---
+all on-chain, all without a trusted administrator.
+
+The gas cost of evaluating these policies on-chain is a primary research
+challenge. CeDAR's work on \emph{policy composition} (merging multiple
+organisations' policies into one composite smart contract) is specifically
+motivated by minimising on-chain gas expenditure.
+
+% ============================================================
+\section{Phase 5: Cryptographic Identity --- Digital Signatures}
+% ============================================================
+
+\subsection{The Core Problem: Proving Authorship Without a Middleman}
+
+When you send a transaction on Bitcoin, you broadcast a message to thousands of
+strangers. How does every node on earth know that \emph{you} --- and not an
+impersonator --- authorised it? There is no username, no password, no bank to
+call. The answer is \textbf{public-key cryptography}.
+
+% ------------------------------------------------------------
+\subsection{The Magic Padlock: Asymmetric Keys}
+
+A normal padlock uses one key to both lock and unlock (symmetric). The problem:
+to give someone a locked box, you must first share the key --- but how do you
+share it safely?
+
+The solution is a padlock with a fundamentally different property:
+
+\begin{quote}
+    It comes with \textbf{two different keys}: a Private Key and a Public Key.\\
+    What the Private Key \emph{locks}, only the Public Key can \emph{unlock}.\\
+    Knowing the Public Key reveals \emph{nothing} about the Private Key.
+\end{quote}
+
+You keep the \textbf{Private Key} ($sk$) secret forever. You give the
+\textbf{Public Key} ($pk$) to everyone --- post it publicly.
+
+\textbf{How signing works:}
+\begin{enumerate}
+    \item You lock your message with your \emph{private} key and send it.
+    \item Anyone uses your \emph{public} key to open it.
+    \item The fact that the public key opened it \emph{proves} the private key
+          locked it --- and only you have the private key.
+\end{enumerate}
+
+\textbf{The unforgeability guarantee:} Even if an attacker knows your public key
+(everyone does), they cannot work backwards to find your private key. The
+relationship between the two keys is one-way.
+
+\begin{center}
+\begin{tabular}{l l l}
+\toprule
+\textbf{Key} & \textbf{Kept by} & \textbf{Operation} \\
+\midrule
+Private key $sk$ & Owner only (secret) & \textbf{Sign} (lock) a message \\
+Public key $pk$  & Everyone (public)   & \textbf{Verify} (unlock) a message \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ------------------------------------------------------------
+\subsection{The Mathematical Foundation: Modular Arithmetic}
+
+All of this cryptography is built on \textbf{modular (clock) arithmetic}.
+
+A 12-hour clock wraps around at 12:
+\[
+    15 \equiv 3 \pmod{12}
+\]
+
+\textbf{The Discrete Logarithm Problem:} Consider a clock with 7 positions.
+Start at 1 and repeatedly add 3:
+\[
+    1 \;\to\; 4 \;\to\; 0 \;\to\; 3 \;\to\; 6 \;\to\; 2 \;\to\; 5 \;\to\; 1 \;\to\; \cdots
+\]
+The sequence jumps unpredictably. The question ``I added 3 exactly $k$ times
+and landed on 5 --- what is $k$?'' has no algebraic shortcut. You must try
+every possibility. For real cryptography the clock has $\sim 2^{256}$ positions:
+finding $k$ requires $2^{128}$ operations. Computationally impossible.
+
+% ------------------------------------------------------------
+\subsection{Elliptic Curve Cryptography (ECC)}
+
+Bitcoin and Ethereum use the curve \textbf{secp256k1}:
+\[
+    y^2 \equiv x^3 + 7 \pmod{p}
+\]
+Points on this curve form a group under \textbf{point addition} (draw a line
+through two points, reflect the third intersection). Key generation:
+\[
+    P = k \cdot G = \underbrace{G + G + \cdots + G}_{k \text{ times}}
+\]
+\begin{itemize}
+    \item $G$ --- public generator point (known to everyone)
+    \item $k$ --- \textbf{private key} (random 256-bit integer, secret)
+    \item $P$ --- \textbf{public key} (point on curve, shared openly)
+\end{itemize}
+Forward ($k \to P$): fast, $O(\log k)$ steps via repeated doubling.\\
+Reverse ($P \to k$): the \textbf{ECDLP} --- requires $O(2^{128})$ operations.
+
+% ------------------------------------------------------------
+\subsection{Digital Signatures: ECDSA --- The Two Attacks and Their Defeat}
+
+\textbf{Two attacks a forger could attempt:}
+\begin{enumerate}
+    \item \textbf{Forge without private key:} create a valid signature for a
+          fraudulent transaction from scratch.
+    \item \textbf{Replay attack:} copy a valid signature from one transaction
+          and attach it to a different, fraudulent one.
+\end{enumerate}
+
+\textbf{Why hash before signing?} The message can be any length; the signing
+math requires a fixed-size input. Hashing converts any message to exactly 256
+bits: one hash, one signature, regardless of message size.
+
+\textbf{Signing} (private key $k$, message hash $m$):
+\begin{enumerate}
+    \item $m = H(\text{transaction data})$
+    \item Pick fresh random nonce $r$; compute $R = r \cdot G$
+    \item $\displaystyle s = r^{-1}(m + k \cdot R_x) \pmod{n}$
+    \item Output signature $\sigma = (R_x,\; s)$
+\end{enumerate}
+
+\textbf{Verification} (public key $P = kG$, no private key needed):
+\[
+    R' = s^{-1} \cdot m \cdot G + s^{-1} \cdot R_x \cdot P
+\]
+Valid iff $R'_x = R_x$.
+
+\textbf{Why the algebra works} (substituting $P = kG$,
+$s = r^{-1}(m + kR_x)$):
+\[
+    R' = \frac{r}{m+kR_x}\cdot m \cdot G + \frac{r}{m+kR_x} \cdot R_x \cdot kG
+       = \frac{r(m + kR_x)}{m+kR_x} \cdot G = r \cdot G = R \;\checkmark
+\]
+The private key $k$ cancels completely --- proven without ever being revealed.
+
+\textbf{Attack 1 defeated:} Forging $s$ requires $k$. Without it, the
+verification equation produces $R'_x \neq R_x$.
+
+\textbf{Attack 2 (replay) defeated:} $m$ is baked inside $s$. Attaching
+$\sigma$ to a different message changes $m$, which changes $R'_x$. The
+signature is \emph{message-bound} --- physically inseparable from the exact
+transaction it was created for.
+
+% ------------------------------------------------------------
+\subsection{The Nonce Reuse Catastrophe}
+
+\textbf{Critical rule:} The nonce $r$ must be freshly random for every signature.
+
+\textbf{What happens if two signatures share the same $r$:}
+
+Given $s_1 = r^{-1}(m_1 + k R_x)$ and $s_2 = r^{-1}(m_2 + k R_x)$:
+\[
+    s_1 - s_2 = r^{-1}(m_1 - m_2)
+    \;\implies\;
+    r = \frac{m_1 - m_2}{s_1 - s_2}
+\]
+And once $r$ is known:
+\[
+    k = \frac{s_1 \cdot r - m_1}{R_x}
+\]
+\textbf{The entire private key is exposed.} Every coin in the wallet is lost.
+All future transactions can be forged. The damage is total and permanent.
+
+\textbf{Real-world disaster --- Sony PlayStation 3 (2010):} Sony signed all
+PS3 firmware with the \emph{same} nonce $r$. Researchers applied the above
+algebra, recovered Sony's master private key, and could sign arbitrary software
+as legitimate Sony firmware --- bypassing all security on every PS3 ever sold.
+
+\textbf{Modern fix --- RFC 6979:} Rather than trusting a random number
+generator, $r$ is derived \emph{deterministically} from the private key and
+message hash:
+\[
+    r = \text{HMAC-SHA256}(k,\; m)
+\]
+This guarantees $r$ is unique per (key, message) pair without any randomness
+that could fail or repeat.
+
+% ------------------------------------------------------------
+\subsection{Complete Signature Reference Table}
+
+\begin{center}
+\begin{tabular}{l l l}
+\toprule
+\textbf{Component} & \textbf{Value} & \textbf{Role} \\
+\midrule
+Private key $k$      & 256-bit secret          & Creates the signature \\
+Public key $P = kG$  & Point on curve          & Verifies the signature \\
+Message hash $m$     & $H(\text{transaction})$ & Binds signature to exact message \\
+Nonce $R = rG$       & Fresh random point      & Prevents replay; must be unique \\
+Signature $(R_x, s)$ & Two integers            & Proof of knowledge of $k$, bound to $m$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ------------------------------------------------------------
+\subsection{The Complete Bitcoin Transaction Flow}
+
+\begin{verbatim}
+YOUR WALLET
+  Private key k  (secret, never leaves device)
+       │  k · G   (one-way: ECDLP)
+       ▼
+  Public key P   (shared openly)
+       │  Hash(P)  (one-way: SHA-256 + RIPEMD-160)
+       ▼
+  Address         (e.g. 1A2b3C... — what others send funds to)
+
+SENDING A TRANSACTION
+  1. Compose:  "Send 500 to Ali"
+  2. Hash:      m = H("Send 500 to Ali")
+  3. Sign:      σ = (Rx, s)  using private key k
+  4. Broadcast: (message, σ, P) → all nodes
+
+EVERY NODE VERIFIES INDEPENDENTLY
+  Verify(P, m, σ) → true ✓  (no private key needed)
+\end{verbatim}
+
+\textbf{Security depth:} Two one-way barriers stand between your address and
+your private key: ECDLP ($k \to P$) then hashing ($P \to$ address). An
+attacker who sees only your address cannot recover $P$; even with $P$ they
+cannot recover $k$.
+
+% ============================================================
+\section{Phase 6: DeFi, Tokens \& Tokenomics}
+% ============================================================
+
+\subsection{Why Custom Tokens? The Limits of Generic Currency}
+
+ETH and BTC are \emph{generic} currencies --- they carry no rules about how they
+must be spent. Paying for solar recycling in ETH means the recipient can spend
+that ETH on anything. The money has no memory, no purpose, no constraints.
+
+A \textbf{custom token} solves this by encoding spending rules \emph{into the
+currency itself}:
+
+\begin{itemize}
+    \item A token can only be \textbf{minted} when a verified real-world event
+          occurs (e.g.\ an oracle confirms a solar panel generated energy).
+    \item A token can only be \textbf{burned} (redeemed) for a specific purpose
+          (e.g.\ paying a certified recycler).
+    \item The smart contract \textbf{refuses} all other uses.
+\end{itemize}
+
+This is called \textbf{programmable money} --- value that carries its own
+spending rules. Generic ETH cannot do this because it has no awareness of
+application-level context.
+
+\textbf{CeDAR's RC-coin (Recycling Coin):} A custom token invented by CeDAR for
+their solar waste research. Every unit of energy a panel generates triggers
+minting of RC-coins. The accumulated coins represent the panel owner's recycling
+obligation. At end-of-life, coins are burned to fund certified recycling. The
+token is not merely money --- it is \emph{evidence of recycling obligation}
+encoded as a transferable asset. No bank could enforce this; a smart contract
+does it automatically and transparently.
+
+% ------------------------------------------------------------
+\subsection{The Three Token Types}
+
+\begin{enumerate}
+    \item \textbf{Fungible Tokens (ERC-20):} Every unit is identical and
+          interchangeable, like banknotes. Used for currencies, governance votes,
+          utility tokens. Standard interface ensures all wallets and exchanges
+          can handle them without custom code.
+          \textit{Examples: USDC, DAI, RC-coin, UNI.}
+
+    \item \textbf{Non-Fungible Tokens (ERC-721):} Each token has a unique ID and
+          distinct metadata. Used for provable ownership of specific assets: art,
+          land titles, patient record access rights.
+
+    \item \textbf{Stablecoins (a special ERC-20):} Pegged to a stable real-world
+          value (\$1 USD). Two mechanisms:
+          \begin{itemize}
+              \item \textbf{Fiat-backed (USDC):} A company holds \$1 in a bank
+                    for every USDC in existence. Simple but re-introduces a
+                    centralised custodian.
+              \item \textbf{Algorithmic / Crypto-collateralised (DAI):} No bank.
+                    A smart contract maintains the peg using over-collateralisation
+                    and liquidation mechanics --- pure DeFi.
+          \end{itemize}
+\end{enumerate}
+
+% ------------------------------------------------------------
+\subsection{Automated Market Makers (AMMs): Replacing Brokers with Math}
+
+Traditional finance needs a \textbf{market maker} --- a bank or broker who
+quotes buy/sell prices and takes a spread. DeFi replaces this with a single
+mathematical invariant.
+
+A \textbf{liquidity pool} holds two tokens. An \textbf{AMM} (e.g.\ Uniswap)
+enforces the \textbf{constant product formula}:
+
+\[
+    x \cdot y = k
+\]
+
+where $x$ = quantity of Token A, $y$ = quantity of Token B, and $k$ is a
+constant that never changes. No human sets prices. Price emerges from the ratio.
+
+\textbf{Worked example.} Pool: 100 ETH, 10{,}000 RC-coin.
+$k = 100 \times 10{,}000 = 1{,}000{,}000$.
+
+You buy 10 ETH (removing it):
+\[
+    90 \cdot y = 1{,}000{,}000 \implies y = 11{,}111
+\]
+You paid $11{,}111 - 10{,}000 = 1{,}111$ RC-coin for 10 ETH. The ETH price rose
+automatically (fewer ETH in pool). Supply and demand, encoded in one equation,
+no intermediary.
+
+% ------------------------------------------------------------
+\subsection{Price Impact and the Sandwich Attack}
+
+\textbf{Price impact (slippage):} A large trade moves the pool ratio
+significantly, giving the buyer a worse average price. From $x \cdot y = k$:
+removing a large $\Delta x$ from pool requires adding a disproportionately
+large $\Delta y$. The formula punishes large trades automatically.
+
+\textbf{Mathematical form of price impact:}
+\[
+    \Delta y = y \cdot \frac{\Delta x}{x - \Delta x}
+\]
+As $\Delta x \to x$, $\Delta y \to \infty$ --- you cannot drain a pool entirely.
+
+\textbf{Sandwich Attack:} The mempool (pending transaction queue) is public. A
+bot observing a large pending trade can:
+\begin{enumerate}
+    \item \textbf{Front-run:} buy Token A before the victim's transaction,
+          pushing its price up.
+    \item Let the \textbf{victim's transaction} execute at the now-inflated price.
+    \item \textbf{Back-run:} immediately sell Token A at the higher price.
+\end{enumerate}
+The bot extracts value from the victim at zero risk. This is a form of
+\textbf{Miner Extractable Value (MEV)}.
+
+% ------------------------------------------------------------
+\subsection{CeDAR's RC-Coin: DeFi Mechanics Applied to Solar Waste}
+
+CeDAR's RC-coin system directly applies these tokenomics primitives:
+
+\begin{center}
+\begin{tabular}{l l}
+\toprule
+\textbf{DeFi Primitive} & \textbf{RC-coin Application} \\
+\midrule
+Token minting        & Triggered by energy-generation oracle \\
+Token burning        & Redeemed to pay certified recycler \\
+Stablecoin mechanism & RC-coin uses DeFi reserve mechanisms to \\
+                     & stabilise recycling fund against ETH volatility \\
+Smart contract rules & Enforce that RC-coin can \emph{only} fund recycling \\
+On-chain audit trail & All recycling contributions are publicly verifiable \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Key finding from CeDAR's paper: the RC-coin scheme achieves a recycling
+contribution of less than \$2/year/panel --- economically viable even for
+prosumers in developing regions --- while maintaining a fully traceable,
+tamper-proof contribution record on-chain.
+
+% ============================================================
+\section{Phase 7: CeDAR Research --- Deep Dive}
+% ============================================================
+
+% ------------------------------------------------------------
+\subsection{Paper 1: Blockchain-Enabled Data Sharing in CAV Networks (ACNS 2023)}
+% ------------------------------------------------------------
+
+\textbf{Authors:} Ali Hussain Khan, Naveed Ul Hassan, Chuadhry Mujeeb Ahmed,
+Zartash Afzal Uzmi.\\
+\textbf{Venue:} Applied Cryptography and Network Security (ACNS) Workshops, 2023.
+
+\subsubsection{The Real-World Problem}
+
+A self-driving car cannot see around corners. Its safety depends on receiving
+real-time data from other vehicles: obstacle locations, road conditions, sudden
+braking events. But the network includes potentially hacked, spoofed, or
+malicious nodes broadcasting false data to cause accidents or evade detection.
+
+\textbf{The core threat:} A malicious node broadcasting false sensor data. Worse:
+an \textbf{orchestrated attack} where multiple colluding malicious nodes all
+broadcast the same lie and confirm each other's false reports, defeating
+simple majority-vote systems.
+
+\subsubsection{Why Blockchain? The Design Choice}
+
+The paper uses blockchain as a \textbf{shared, tamper-proof reputation ledger}.
+Every node's historical behaviour is recorded on-chain. Before any node's data
+is trusted, its on-chain reputation score is checked.
+
+\textbf{Consensus mechanism chosen: dPoS.} A small elected set of delegate nodes
+produce blocks in round-robin. This achieves fast consensus --- critical in a
+vehicular network where decisions must happen in milliseconds.
+
+\textbf{Problem with vanilla dPoS in adversarial settings:} The delegate election
+assumes the voting pool is trustworthy. If malicious nodes vote in malicious
+delegates, the system collapses. The paper's solution is to layer a
+\textbf{reputation gate} on top: a node cannot be eligible for delegation unless
+its reputation score exceeds a threshold --- screening out adversaries
+\emph{before} the election.
+
+\subsubsection{Three Reputation Schemes Compared}
+
+The paper evaluates three mathematical models for computing a node's reputation.
+
+\textbf{1. Beta Reputation System}
+
+Model each node's history as a sequence of binary outcomes: honest ($\alpha$ successes)
+or dishonest ($\beta$ failures). Reputation is the expected value of the
+Beta distribution:
+\[
+    R_{\text{beta}} = \frac{\alpha}{\alpha + \beta}
+\]
+Simple and interpretable. Weakness: all past evidence is weighted equally ---
+recent misbehaviour counts no more than ancient history.
+
+\textbf{2. Sigmoid Reputation}
+
+Maps a scalar behaviour score $x$ to a bounded probability:
+\[
+    R_{\text{sig}} = \frac{1}{1 + e^{-x}}
+\]
+Smooth and bounded in $[0,1]$. Weakness: symmetric and single-dimensional ---
+cannot distinguish between different \emph{types} of dishonest behaviour or
+assign different severities to different failure modes.
+
+\textbf{3. Multi-Weight Subjective Logic (MWSL)} --- the paper's primary proposal
+
+Subjective Logic extends classical probability with an explicit \textbf{uncertainty
+mass}: rather than asserting ``70\% honest,'' a node reports a
+\emph{belief triplet} $(b, d, u)$ where $b$ = belief (honest), $d$ = disbelief
+(dishonest), $u$ = uncertainty (insufficient data), satisfying $b + d + u = 1$.
+
+The ``Multi-Weight'' extension evaluates behaviour across \textbf{multiple
+independent dimensions}, each weighted by importance:
+\begin{itemize}
+    \item $w_1$: Sensor data accuracy (cross-verified against physical ground truth)
+    \item $w_2$: Transmission timeliness (measured against a clock)
+    \item $w_3$: GPS location consistency (cross-checked with base-station triangulation)
+    \item $w_4$: Bandwidth/energy claims (verified against observed behaviour)
+\end{itemize}
+
+The combined reputation score:
+\[
+    R_{\text{MWSL}} = \sum_{i} w_i \cdot b_i, \qquad \sum_i w_i = 1
+\]
+
+\textbf{Why MWSL defeats the orchestrated attack:}
+
+A majority-vote system fails against colluding nodes because 10 malicious nodes
+can mutually confirm each other's false reports, appearing as consensus. MWSL is
+immune because it \textbf{grounds reputation in verifiable external truth, not
+just internal network agreement.} The colluding nodes can coordinate their lies,
+but they cannot coordinate against a GPS base station, a physical clock, or
+road-infrastructure sensor data that exists outside the network. Their false
+reports contradict objective external references across multiple independent
+dimensions simultaneously --- each contradiction reduces $b_i$, collapsing
+$R_{\text{MWSL}}$ regardless of how many allies corroborate the lie.
+
+\subsubsection{The Latency Model}
+
+The paper does not merely claim blockchain is ``fast enough'' --- it formally
+decomposes block-generation latency into four components:
+\[
+    T_{\text{block}} = T_{\text{comm}} + T_{\text{comp}} + T_{\text{prop}} + T_{\text{queue}}
+\]
+
+\begin{center}
+\begin{tabular}{l l}
+\toprule
+\textbf{Component} & \textbf{Source of Delay} \\
+\midrule
+$T_{\text{comm}}$  & Wireless transmission of block data \\
+$T_{\text{comp}}$  & Delegate computation / validation \\
+$T_{\text{prop}}$  & Propagation of validated block to all nodes \\
+$T_{\text{queue}}$ & Waiting time when channel is congested \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Key Results}
+
+The system is simulated under two attack models and three network generations:
+
+\begin{center}
+\begin{tabular}{l l l}
+\toprule
+\textbf{Network} & \textbf{Simple Attack} & \textbf{Orchestrated Attack} \\
+\midrule
+4G & Poor --- latency too high & Fails entirely \\
+5G & Marginal                   & Poor \\
+6G & Detected quickly           & \textbf{Detected within seconds} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Conclusion:} 4G and 5G networks have fundamentally unsuitable latency
+for blockchain-based CAV consensus. 6G's sub-millisecond air interface collapses
+$T_{\text{comm}}$ and $T_{\text{prop}}$, making MWSL-based dPoS viable for
+real-time vehicular safety decisions.
+
+\subsubsection{Interview Preparation: Key Discussion Points}
+
+\begin{enumerate}
+    \item \textbf{Why dPoS over PoW/PoS for CAVs?} Speed. A moving vehicle
+          network cannot wait for mining or full-validator consensus. dPoS
+          narrows the consensus set to a small elected group, minimising
+          $T_{\text{comp}}$ and $T_{\text{prop}}$.
+
+    \item \textbf{Why is reputation needed on top of dPoS?} dPoS assumes a
+          trustworthy electorate. In adversarial CAV networks, the electorate
+          itself may be compromised. Reputation gates the election, preventing
+          malicious nodes from ever reaching delegate status.
+
+    \item \textbf{What does MWSL add that beta/sigmoid cannot?}
+          Multi-dimensional weighting. Different evidence types carry different
+          danger levels. A lie about sensor accuracy (direct safety hazard) must
+          penalise far more heavily than a delayed transmission. Beta and sigmoid
+          are scalar --- they cannot express this hierarchy.
+
+    \item \textbf{What is the open problem?} The paper validates in simulation.
+          Real-world deployment requires standardised cross-verification
+          infrastructure (physical reference nodes, base-station APIs) and
+          a governance mechanism for setting weights $w_i$ --- who decides
+          how much to penalise GPS inaccuracy vs.\ transmission delay?
+\end{enumerate}
+
+% ------------------------------------------------------------
+\subsection{Paper 2: Blockchain-Based Auditable Access Control (ICDCS 2020 + TDSC 2024)}
+% ------------------------------------------------------------
+
+\textbf{Authors:} Ahmed Akhtar, Basit Shafiq, Jaideep Vaidya, Ayesha Afzal,
+Shafay Shamail, Omer Rana (+ Masoud Barati for TDSC 2024).\\
+\textbf{Venues:} IEEE ICDCS 2020; IEEE Transactions on Dependable and Secure
+Computing (TDSC) 2024.
+
+\subsubsection{The Real-World Problem}
+
+A hospital, a research university, and a pharmaceutical company want to share
+patient data. Each organisation has its own access control policy:
+\begin{itemize}
+    \item Hospital: ``Only cardiologists may access cardiac records during working hours.''
+    \item University: ``Only researchers with active IRB approval may query patient data.''
+    \item Pharma: ``Only employees with data-sharing agreement on file may read records.''
+\end{itemize}
+
+All three policies must be satisfied simultaneously before any access is granted.
+Today this is enforced by a \textbf{central administrator} --- a trusted server
+or person. Problems: single point of failure, can be bribed or hacked, no
+tamper-proof audit trail.
+
+\textbf{Shafiq's question:} Can we replace the central administrator with a smart
+contract, while keeping on-chain execution cost economically viable?
+
+\subsubsection{XACML: The Policy Language}
+
+Organisations already write access policies in \textbf{XACML} (eXtensible Access
+Control Markup Language), an XML-based standard for \textbf{Attribute-Based
+Access Control (ABAC)}. Each rule tests \emph{attributes} of the requester:
+role, department, clearance level, time-of-day, patient consent status. The
+\texttt{require()} guard from Phase 4 is the primitive; XACML is its
+industrial-strength formalisation.
+
+\subsubsection{The Naïve Approach and Its Gas Cost Problem}
+
+\textbf{Naïve design:} Deploy each organisation's policy as a separate smart
+contract. For every access request, call all three contracts in sequence.
+
+\textbf{Why this fails at scale:}
+
+\begin{center}
+\begin{tabular}{l l}
+\toprule
+\textbf{Approach} & \textbf{Per-Request On-Chain Cost} \\
+\midrule
+3 separate contracts (30 + 25 + 20 rules) & 3 separate calls, 75 rule evaluations \\
+1 composite contract ($\sim$40 rules)     & 1 call, 40 rule evaluations \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+At thousands of requests per day, three separate contracts cost approximately
+3$\times$ the gas of a single composite. The on-chain cost makes the naïve
+approach economically unviable at production scale.
+
+\subsubsection{The Core Contribution: Policy Composition}
+
+Instead of calling three contracts at runtime, \textbf{pre-merge} all three
+policies into one composite policy \emph{at deployment time} (off-chain).
+The composite enforces all three originals simultaneously --- one contract call,
+one gas expenditure, per request.
+
+\textbf{The deployment-time challenge:} With three policies of 30, 25, and 20
+rules respectively, naïve composition must inspect up to
+$30 \times 25 \times 20 = 15{,}000$ rule combinations to find overlaps,
+redundancies, and contradictions. This combinatorial explosion is the
+hard problem. It is paid once, off-chain, at composition time --- not on every
+request. The key engineering insight is to \textbf{front-load complexity to
+eliminate recurring on-chain cost}.
+
+\textbf{Formal objective:}
+\[
+    \min |\mathcal{C}| \quad \text{subject to} \quad \forall i,\; \mathcal{C} \models \mathcal{P}_i
+\]
+Find the smallest composite policy $\mathcal{C}$ (fewest rules, minimum gas)
+that logically implies every local policy $\mathcal{P}_i$.
+
+\subsubsection{Two Formulations (ICDCS 2020 vs.\ TDSC 2024)}
+
+\textbf{Paper 1 (ICDCS 2020) --- Attribute-Based Policies:}
+
+Policies are conjunctions of attribute constraints. Composition is cast as a
+\textbf{constraint optimisation problem}: find the minimum set of constraints
+whose conjunction satisfies all local constraint sets. Redundant constraints
+(subsumed by others) are eliminated. The result is deployed as a single
+Ethereum smart contract with an Ethereum testnet prototype.
+
+\textbf{Paper 2 (TDSC 2024) --- Event-Driven Policies:}
+
+Some policies depend not on static attributes but on \textbf{sequences of events}:
+``A researcher may access data \emph{only after} IRB approval has been recorded
+\emph{AND} patient consent has been logged.''
+
+These workflow policies are modelled as \textbf{finite automata} (state machines).
+Composing $n$ automata into one minimal composite automaton reduces to the
+\textbf{Weighted Set Cover problem}:
+
+\begin{quote}
+    Given a universe of required state transitions across all local automata,
+    find the minimum-weight set of states in the composite that \emph{covers}
+    all required transitions.
+\end{quote}
+
+Weighted Set Cover is NP-hard in general, but the XACML automaton structure
+admits polynomial-time approximations with provable bounds --- which the paper
+derives and validates empirically.
+
+\subsubsection{Game-Theoretic Auditing}
+
+Enforcement is solved by the composite smart contract. But \textbf{auditing} ---
+verifying that the composite was derived correctly and that access was never
+granted incorrectly --- remains expensive if done exhaustively on-chain.
+
+Shafiq's solution: model auditing as a \textbf{game between a challenger
+(auditor) and a defender (executing node)}. The challenger samples
+probabilistically, not exhaustively. The mechanism design result:
+
+\begin{quote}
+    If the penalty for a detected violation exceeds the benefit of cheating,
+    rational defenders never cheat --- regardless of the sampling probability.
+\end{quote}
+
+This is the same economic logic as Satoshi's miner incentive design (Phase 2),
+now applied to policy auditing. A small probabilistic audit sample provides
+the same deterrence as full auditing, at a fraction of the gas cost.
+
+\subsubsection{Connection Map to Prior Phases}
+
+\begin{center}
+\begin{tabular}{l l}
+\toprule
+\textbf{Concept Learned} & \textbf{How It Appears in This Paper} \\
+\midrule
+\texttt{require()} guard (Phase 4) & Each XACML rule becomes one on-chain check \\
+Gas cost (Phase 4)                 & Entire paper motivated by minimising gas \\
+Smart contract immutability        & Composite deployed once, unalterable by any org \\
+Oracle problem (Phase 4)           & Attributes (role, time) supplied via trusted oracles \\
+Mechanism design / miners (Phase 2) & Auditing game: make cheating less profitable than honesty \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{Interview Preparation: Key Discussion Points}
+
+\begin{enumerate}
+    \item \textbf{What is the central cost tradeoff?} Front-load the
+          combinatorial complexity of policy composition off-chain at
+          deployment time (paid once). Eliminate recurring per-request gas by
+          reducing 3 contract calls to 1. The offline cost is high
+          ($O(n_1 \cdot n_2 \cdots n_k)$ combinations); the runtime saving
+          compounds across millions of requests.
+
+    \item \textbf{Why is Weighted Set Cover the right formulation for
+          event-driven policies?} Workflow policies define required state
+          transitions. A composite automaton must ``cover'' every transition
+          required by every local automaton with the minimum number of states
+          (each state = on-chain storage and computation = gas).
+
+    \item \textbf{Why is full on-chain auditing impractical?} Every
+          re-execution of a policy check costs gas. With millions of historical
+          decisions, full re-audit is prohibitively expensive. Probabilistic
+          sampling under a game-theoretic deterrence model achieves the same
+          security guarantee at a fraction of the cost.
+
+    \item \textbf{What is the open problem?} Policy \emph{updates}. When one
+          organisation changes its policy, the composite must be recomposed
+          and redeployed. The ablation studies in TDSC 2024 confirm that local
+          policy changes correctly propagate through the composite, but
+          redeployment costs gas and requires coordinating all participating
+          organisations --- a governance problem the paper leaves open.
+\end{enumerate}
+
+\end{document}
