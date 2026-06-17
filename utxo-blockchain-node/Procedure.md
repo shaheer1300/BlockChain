@@ -312,11 +312,9 @@ In `llm-agent-rules.md`, document these rules:
 
 ---
 
-## 11. Phase 1 LLM agent instruction
+## 11. Sanity Check
 
-Give this instruction to your coding agent:
-
-Implement only Phase 1 project initialization for the Go UTXO blockchain node inside the existing monorepo `BlockChain`. The project folder is `utxo-blockchain-node`. Create a separate Go module inside this folder, not at the repository root. Set up the standard Go directory structure with `cmd/node`, `internal`, `tests`, `scripts`, and `docs`. Add only the initial dependencies `secp256k1/v4` and `bbolt`. Create `.env.example`, update `.gitignore`, and create placeholder documentation files. Do not implement blockchain logic yet.
+Do a sanity test to ensure that every step was followed properly
 
 ---
 
