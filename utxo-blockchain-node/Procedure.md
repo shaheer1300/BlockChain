@@ -423,7 +423,7 @@ Orchestrator. Wires together chain, mempool, storage, API, P2P, and mining.
 
 ## 2. Core data models
 
-Your LLM agent should define these models in `internal/types`:
+Define these models in `internal/types`:
 
 1. `Hash32`
 2. `Amount`
@@ -443,9 +443,9 @@ Important design rule:
 
 Consensus hashes must use deterministic canonical encoding. Do **not** use JSON for `txid`, block hash, signature preimage, or Merkle root input.
 
-Task for LLM agent:
+Task:
 
-“Create blockchain domain structs with small methods for TxID, BlockHash, IsCoinbase, TotalOutputValue, and canonical binary encoding. Keep JSON tags only for API responses, not consensus hashing.”
+Create blockchain domain structs with small methods for TxID, BlockHash, IsCoinbase, TotalOutputValue, and canonical binary encoding. Keep JSON tags only for API responses, not consensus hashing.
 
 Acceptance criteria:
 
