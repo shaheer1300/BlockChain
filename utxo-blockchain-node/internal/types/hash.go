@@ -33,18 +33,18 @@ var ZeroHash = Hash32{}
 // String returns the lowercase hex encoding of h.
 func (h Hash32) String() string { return hex.EncodeToString(h[:]) }
 
-// Bytes returns a defensive copy of h. Do not give callers direct access 
+// Bytes returns a defensive copy of h. Do not give callers direct access
 // to the underlying array, as it would allow them to mutate the hash value and break invariants. This method provides a safe way to get the byte representation of the hash without exposing the internal state.
 func (h Hash32) Bytes() []byte {
 	out := make([]byte, HashSize)
-	copy(out, h[:])  // creating a copy here
+	copy(out, h[:]) // creating a copy here
 	return out
 }
 
 // IsZero reports whether h equals ZeroHash.
 func (h Hash32) IsZero() bool { return h == ZeroHash }
 
-// SetHex parses a 64-character hex string into h. 
+// SetHex parses a 64-character hex string into h.
 // Use a pointer receiver (*Hash32) to modify the original hash
 // rather than a copy.
 func (h *Hash32) SetHex(s string) error {
