@@ -1,0 +1,153 @@
+# Node.js & npm
+node_modules/
+package-lock.json
+yarn.lock
+.npm
+*.log
+logs/
+
+# Python & pip
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv
+venv/
+ENV/
+env/
+.env
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
+.classpath
+.c9/
+*.code-workspace
+
+# Build & Compile
+dist/
+build/
+.gradle
+.gradle/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+
+# Ethereum & Solidity
+.env.local
+.env.*.local
+coverage/
+artifacts/
+cache/
+hardhat.config.js.bak
+
+# Truffle
+.deployed
+.contracts/
+truffle-config.js.bak
+
+# Foundry
+.foundry/
+
+# Web3 & Blockchain Tools
+.openzeppelin/
+
+# Testing
+.coverage
+.nyc_output/
+coverage.json
+.mocha.opts
+test-output/
+*.gcov
+
+# OS
+.DS_Store
+Thumbs.db
+.windows-thumbnail.db
+
+# Temporary Files
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+temp/
+tmp/
+
+# Docker
+docker-compose.override.yml
+
+# AWS & Cloud
+.elasticbeanstalk/
+*.pem
+*.key
+
+# Keys & Secrets
+.env
+.env.local
+.env.*.local
+secrets/
+*.pem
+*.key
+private_key*
+mnemonic*
+
+# Blockchain Network Data
+.ganache/
+ganache-db/
+blockchain-data/
+chaindata/
+nodes/*/keystore/
+
+# Gas Reports
+gas-report.txt
+
+# Flatten Contracts
+flattened/
+
+# Documentation
+docs/_build/
+site/
+
+# Misc
+.cache/
+.turbo/
+dist/
+out/
+.next/
+.nuxt/
+.vercel/
+
+# notes, specifically scratch notes
+scratchnotes.md
