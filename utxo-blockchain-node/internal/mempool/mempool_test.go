@@ -194,20 +194,33 @@ func TestAdd_ExactlyMinFeeRateAccepted(t *testing.T) {
 	k := newKey(t)
 	addr := crypto.PubKeyToAddress(k.PubKey())
 	op := types.OutPoint{TxID: seedHash(6), Index: 0}
-	view := buildView(op, 100_000, addr)
-
-	// First, find the canonical size so we can compute an exact fee.
-	tx0 := signedTx(t, op, k, 99_900, addr) // rough fee, used only to get size
-	encoded, _ := tx0.CanonicalEncode()
-	exactMinFee := uint64(len(encoded)) * 1 // 1 sat/byte
-
+	const inValue = types.Amount(100_000)
+	view := buildView(op, inValue, addr)
 	mp := mempool.New(1) // 1 sat/byte
-	// outValue = inputValue - fee
-	outValue := types.Amount(100_000) - types.Amount(exactMinFee)
-	tx := signedTx(t, op, k, outValue, addr)
-	if err := mp.Add(tx, view); err != nil {
-		t.Fatalf("Add with exact min fee rate: %v", err)
+
+	// ECDSA DER signature length varies (70–72 bytes) depending on the
+	// high bit of r and s, so the encoded tx size cannot be predicted
+	// before signing. Iterate until the fee covers the actual signed
+	// size, guaranteeing fee/size ≥ 1 sat/byte.
+	fee := uint64(1)
+	const maxAttempts = 8
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		outValue := inValue - types.Amount(fee)
+		tx := signedTx(t, op, k, outValue, addr)
+		encoded, err := tx.CanonicalEncode()
+		if err != nil {
+			t.Fatalf("CanonicalEncode: %v", err)
+		}
+		size := uint64(len(encoded))
+		if fee >= size {
+			if err := mp.Add(tx, view); err != nil {
+				t.Fatalf("Add with exact min fee rate (fee=%d, size=%d): %v", fee, size, err)
+			}
+			return
+		}
+		fee = size
 	}
+	t.Fatalf("signed tx size did not converge after %d attempts", maxAttempts)
 }
 
 // ── RemoveMined ───────────────────────────────────────────────────────────────
