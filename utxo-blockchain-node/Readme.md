@@ -1,0 +1,57 @@
+# A UTXO Blockchain Node, From Scratch
+
+*Core objective.* Implement a minimal but correct Bitcoin-style blockchain: a UTXO-model ledger with Proof-of-Work, Merkle-tree block commitments, transaction validation, a mempool, fork-choice (heaviest chain), and peer-to-peer block/transaction gossip between several nodes.
+
+*Target stack & concepts.* Rust or Go (signals systems seriousness); libp2p or raw TCP for the gossip layer; ECDSA/secp256k1 for signatures; SHA-256 and Merkle trees for commitments. Concepts demonstrated: the UTXO state model, cryptographic hashing and digital signatures, Merkle proofs, Nakamoto consensus, and fork resolution.
+
+*System design challenge.* The hard parts aren't the crypto primitives — they're the distributed-systems problems your enterprise background makes you credible on: designing the mempool eviction policy, handling reorgs without corrupting the UTXO set, reasoning about eventual consistency across gossiping peers, and bounding state growth. Building UTXO rather than the easier account model is a deliberate signal that you understand *Bitcoin's* design, not just "a blockchain."
+
+# Architecture
+
+`cmd/node`
+
+Entry point only. It should parse config, initialize dependencies, start the node, and handle shutdown.
+
+`internal/config`
+
+Loads and validates configuration.
+
+`internal/types`
+
+Defines core blockchain data structures: transaction, input, output, outpoint, block header, block, UTXO, block index, undo data.
+
+`internal/crypto`
+
+Hashing, Merkle root, key generation, address creation, signing, signature verification.
+
+`internal/wallet`
+
+Simple local wallet functions: generate keypair, derive address, sign transaction input.
+
+`internal/consensus`
+
+Pure validation rules. No database writes. This package should validate transactions, blocks, proof-of-work, Merkle roots, coinbase rules, and amount rules.
+
+`internal/storage`
+
+Database layer. Owns bbolt access. Exposes repository-style methods for blocks, headers, UTXOs, undo records, chain metadata, and active chain index.
+
+`internal/chain`
+
+Chain state manager. Owns block import, connect block, disconnect block, fork-choice, reorg handling, active tip updates.
+
+`internal/mempool`
+
+Stores unconfirmed transactions. Handles mempool validation, double-spend prevention, fee ordering, eviction, block inclusion cleanup, and reorg reinsertion.
+
+`internal/api`
+
+HTTP handlers. No consensus logic here. It should call node services.
+
+`internal/p2p`
+
+Initial simple peer gossip over HTTP. Later you can replace it with TCP or libp2p.
+
+`internal/node`
+
+Orchestrator. Wires together chain, mempool, storage, API, P2P, and mining.
