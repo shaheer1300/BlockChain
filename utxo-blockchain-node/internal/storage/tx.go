@@ -68,3 +68,21 @@ func (w *WriteTx) SetBestTip(tip *types.ChainTip) error {
 func (w *WriteTx) SaveUndo(undo *types.BlockUndo) error {
 	return saveUndoTx(w.tx, undo)
 }
+
+// GetUTXO reads a UTXO within the transaction. Reads are consistent with any
+// writes already made in the same transaction — a PutUTXO followed by GetUTXO
+// on the same outpoint returns the just-written value, and a DeleteUTXO
+// followed by GetUTXO returns nil. This is used by connectBlock to read UTXOs
+// for undo-record construction before deleting them.
+func (w *WriteTx) GetUTXO(op types.OutPoint) (*types.UTXO, error) {
+	key := outpointKey(op)
+	data := w.tx.Bucket(bucketUTXOs).Get(key[:])
+	if data == nil {
+		return nil, nil
+	}
+	var utxo types.UTXO
+	if err := unmarshalJSON(data, &utxo); err != nil {
+		return nil, err
+	}
+	return &utxo, nil
+}
