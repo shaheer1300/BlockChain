@@ -52,10 +52,10 @@ type DemoTxResult struct {
 
 // DemoInput is a single selected UTXO shown in the tx-builder explanation.
 type DemoInput struct {
-	TxID   types.Hash32  `json:"txid"`
-	Index  uint32        `json:"index"`
-	Value  types.Amount  `json:"value"`
-	Owner  types.Address `json:"owner"`
+	TxID  types.Hash32  `json:"txid"`
+	Index uint32        `json:"index"`
+	Value types.Amount  `json:"value"`
+	Owner types.Address `json:"owner"`
 }
 
 // DemoOutput is a single tx output as planned by the demo builder.
@@ -70,11 +70,11 @@ type DemoOutput struct {
 // paying different recipients, submits them in order, and returns the
 // outcome of each so the UI can visualise the rejection.
 type DemoDoubleSpendRequest struct {
-	FromWallet  string        `json:"from_wallet"`
-	ToAddressA  types.Address `json:"to_address_a"`
-	ToAddressB  types.Address `json:"to_address_b"`
-	Amount      types.Amount  `json:"amount"`
-	Fee         types.Amount  `json:"fee"`
+	FromWallet string        `json:"from_wallet"`
+	ToAddressA types.Address `json:"to_address_a"`
+	ToAddressB types.Address `json:"to_address_b"`
+	Amount     types.Amount  `json:"amount"`
+	Fee        types.Amount  `json:"fee"`
 }
 
 // DemoDoubleSpendResult describes the outcome of each of the two
@@ -101,11 +101,11 @@ type DemoMineRequest struct {
 // DemoStateResponse is a one-shot snapshot powering the GET /demo/state
 // endpoint — convenient for the UI to refresh after every action.
 type DemoStateResponse struct {
-	Status   StatusResult     `json:"status"`
-	Wallets  []DemoWalletInfo `json:"wallets"`
-	UTXOs    []*types.UTXO    `json:"utxos"`
-	Mempool  []*types.MempoolEntry `json:"mempool"`
-	Blocks   []BlockSummary   `json:"blocks"`
+	Status  StatusResult          `json:"status"`
+	Wallets []DemoWalletInfo      `json:"wallets"`
+	UTXOs   []*types.UTXO         `json:"utxos"`
+	Mempool []*types.MempoolEntry `json:"mempool"`
+	Blocks  []BlockSummary        `json:"blocks"`
 }
 
 // ── interfaces ────────────────────────────────────────────────────────────────
