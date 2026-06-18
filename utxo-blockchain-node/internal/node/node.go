@@ -17,6 +17,7 @@ import (
 	chainfmt "github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/chain"
 	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/config"
 	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/mempool"
+	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/p2p"
 	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/storage"
 	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/types"
 )
@@ -32,6 +33,7 @@ type Node struct {
 	db        *storage.DB
 	chain     *chainfmt.Manager
 	mp        *mempool.Mempool
+	gossiper  *p2p.Gossiper
 	api       *api.Server
 	minerAddr types.Address // zero if MINER_ADDRESS not set
 }
@@ -78,6 +80,11 @@ func New(cfg *config.Config, log *slog.Logger) (*Node, error) {
 		powNibbles: cfg.PowTargetPrefixZeroes,
 	}
 
+	// The Gossiper is created after nodeServices so we can pass svc as the
+	// Callbacks implementation. We then set svc.gossiper to close the loop.
+	g := p2p.New(cfg.Peers, log, svc)
+	svc.gossiper = g
+
 	srv := api.New(cfg, log, svc)
 
 	return &Node{
@@ -86,6 +93,7 @@ func New(cfg *config.Config, log *slog.Logger) (*Node, error) {
 		db:        db,
 		chain:     cm,
 		mp:        mp,
+		gossiper:  g,
 		api:       srv,
 		minerAddr: minerAddr,
 	}, nil

@@ -78,6 +78,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /tx", s.handleSubmitTx)
 	mux.HandleFunc("POST /mine", s.handleMine)
 	mux.HandleFunc("GET /peers", s.handleGetPeers)
+	// P2P gossip receive endpoints — called by remote peers.
+	mux.HandleFunc("POST /p2p/tx", s.handleP2PTx)
+	mux.HandleFunc("POST /p2p/block", s.handleP2PBlock)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -297,6 +300,42 @@ func (s *Server) handleMine(w http.ResponseWriter, r *http.Request) {
 // peersResponse is the JSON payload for GET /peers.
 type peersResponse struct {
 	Peers []string `json:"peers"`
+}
+
+// POST /p2p/tx — receive a transaction pushed by a peer.
+// The node deduplicates, validates, adds to mempool, and re-broadcasts.
+func (s *Server) handleP2PTx(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSvc(w) {
+		return
+	}
+	var tx types.Transaction
+	if err := json.NewDecoder(r.Body).Decode(&tx); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid transaction JSON: "+err.Error())
+		return
+	}
+	if err := s.svc.ReceiveTx(r.Context(), &tx); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /p2p/block — receive a block pushed by a peer.
+// The node deduplicates, validates, connects (or stores as side-chain), and re-broadcasts.
+func (s *Server) handleP2PBlock(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSvc(w) {
+		return
+	}
+	var block types.Block
+	if err := json.NewDecoder(r.Body).Decode(&block); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid block JSON: "+err.Error())
+		return
+	}
+	if err := s.svc.ReceiveBlock(r.Context(), &block); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GET /peers — returns the configured peer list; does not require svc.

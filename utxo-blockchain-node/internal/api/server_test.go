@@ -27,6 +27,8 @@ type mockSvc struct {
 	mineFn              func(context.Context) (*MineResult, error)
 	getPeersFn          func() []string
 	getMempoolFn        func() []*types.MempoolEntry
+	receiveTxFn         func(context.Context, *types.Transaction) error
+	receiveBlockFn      func(context.Context, *types.Block) error
 }
 
 func (m *mockSvc) Status() StatusResult {
@@ -68,6 +70,18 @@ func (m *mockSvc) GetPeers() []string {
 func (m *mockSvc) GetMempool() []*types.MempoolEntry {
 	if m.getMempoolFn != nil {
 		return m.getMempoolFn()
+	}
+	return nil
+}
+func (m *mockSvc) ReceiveTx(ctx context.Context, tx *types.Transaction) error {
+	if m.receiveTxFn != nil {
+		return m.receiveTxFn(ctx, tx)
+	}
+	return nil
+}
+func (m *mockSvc) ReceiveBlock(ctx context.Context, blk *types.Block) error {
+	if m.receiveBlockFn != nil {
+		return m.receiveBlockFn(ctx, blk)
 	}
 	return nil
 }
@@ -481,5 +495,83 @@ func TestHandleHealth_UnknownPath(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+// ── POST /p2p/tx ──────────────────────────────────────────────────────────────
+
+func TestHandleP2PTx_Accepted_204(t *testing.T) {
+	called := false
+	svc := &mockSvc{
+		receiveTxFn: func(_ context.Context, _ *types.Transaction) error {
+			called = true
+			return nil
+		},
+	}
+	tx := types.Transaction{Version: 1}
+	body, _ := json.Marshal(tx)
+	rec := serveRequest(newTestServerWith(t, svc),
+		httptest.NewRequest(http.MethodPost, "/p2p/tx", bytes.NewReader(body)))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if !called {
+		t.Error("ReceiveTx was not called")
+	}
+}
+
+func TestHandleP2PTx_InvalidJSON_400(t *testing.T) {
+	svc := &mockSvc{}
+	rec := serveRequest(newTestServerWith(t, svc),
+		httptest.NewRequest(http.MethodPost, "/p2p/tx", bytes.NewBufferString("not-json")))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleP2PTx_NilSvc_503(t *testing.T) {
+	rec := serveRequest(newTestServer(t),
+		httptest.NewRequest(http.MethodPost, "/p2p/tx", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+// ── POST /p2p/block ───────────────────────────────────────────────────────────
+
+func TestHandleP2PBlock_Accepted_204(t *testing.T) {
+	called := false
+	svc := &mockSvc{
+		receiveBlockFn: func(_ context.Context, _ *types.Block) error {
+			called = true
+			return nil
+		},
+	}
+	blk := types.Block{Header: types.BlockHeader{Version: 1}}
+	body, _ := json.Marshal(blk)
+	rec := serveRequest(newTestServerWith(t, svc),
+		httptest.NewRequest(http.MethodPost, "/p2p/block", bytes.NewReader(body)))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if !called {
+		t.Error("ReceiveBlock was not called")
+	}
+}
+
+func TestHandleP2PBlock_InvalidJSON_400(t *testing.T) {
+	svc := &mockSvc{}
+	rec := serveRequest(newTestServerWith(t, svc),
+		httptest.NewRequest(http.MethodPost, "/p2p/block", bytes.NewBufferString("{bad")))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestHandleP2PBlock_NilSvc_503(t *testing.T) {
+	rec := serveRequest(newTestServer(t),
+		httptest.NewRequest(http.MethodPost, "/p2p/block", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
 	}
 }

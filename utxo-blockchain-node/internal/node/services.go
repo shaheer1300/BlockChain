@@ -10,18 +10,20 @@ import (
 	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/chain"
 	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/config"
 	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/mempool"
+	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/p2p"
 	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/storage"
 	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/types"
 )
 
-// nodeServices implements api.Services. It bridges the HTTP layer to the
-// chain manager, mempool, and storage without putting any consensus logic
-// in the handlers.
+// nodeServices implements api.Services and p2p.Callbacks. It bridges the
+// HTTP layer to the chain manager, mempool, storage, and gossiper without
+// putting any consensus logic in the handlers.
 type nodeServices struct {
 	cfg        *config.Config
 	db         *storage.DB
 	chain      *chain.Manager
 	mp         *mempool.Mempool
+	gossiper   *p2p.Gossiper // nil until wired in
 	minerAddr  types.Address // zero if not configured
 	powNibbles int
 }
@@ -52,9 +54,16 @@ func (s *nodeServices) GetUTXOsByAddress(addr types.Address) ([]*types.UTXO, err
 
 // SubmitTx validates tx and admits it to the mempool. The storage.DB is
 // used as the UTXOView because it satisfies the mempool.UTXOView interface
-// (GetUTXO returns the committed chain state).
+// (GetUTXO returns the committed chain state). On success the transaction
+// is broadcast to peers.
 func (s *nodeServices) SubmitTx(tx *types.Transaction) error {
-	return s.mp.Add(tx, s.db)
+	if err := s.mp.Add(tx, s.db); err != nil {
+		return err
+	}
+	if s.gossiper != nil {
+		s.gossiper.BroadcastTx(context.Background(), tx)
+	}
+	return nil
 }
 
 // Mine builds a candidate block from the current mempool, finds a PoW
@@ -127,6 +136,10 @@ func (s *nodeServices) Mine(ctx context.Context) (*api.MineResult, error) {
 	}
 
 	newTip := s.chain.Tip()
+	// Broadcast the newly mined block to all peers.
+	if s.gossiper != nil {
+		s.gossiper.BroadcastBlock(ctx, block)
+	}
 	return &api.MineResult{Hash: newTip.Hash, Height: newTip.Height}, nil
 }
 
@@ -142,4 +155,60 @@ func (s *nodeServices) GetPeers() []string {
 // descending fee rate.
 func (s *nodeServices) GetMempool() []*types.MempoolEntry {
 	return s.mp.Entries()
+}
+
+// ── api.Services gossip methods ───────────────────────────────────────────────
+
+// ReceiveTx handles an inbound transaction from a peer (via POST /p2p/tx).
+// It admits the transaction to the local mempool, then re-broadcasts it.
+func (s *nodeServices) ReceiveTx(ctx context.Context, tx *types.Transaction) error {
+	if s.gossiper != nil {
+		return s.gossiper.ReceiveTx(ctx, tx)
+	}
+	// Gossiper not yet wired (should not happen in production).
+	return s.mp.Add(tx, s.db)
+}
+
+// ReceiveBlock handles an inbound block from a peer (via POST /p2p/block).
+// It connects the block locally, then re-broadcasts it.
+func (s *nodeServices) ReceiveBlock(ctx context.Context, block *types.Block) error {
+	if s.gossiper != nil {
+		return s.gossiper.ReceiveBlock(ctx, block)
+	}
+	// Gossiper not yet wired (should not happen in production).
+	_, err := s.chain.ImportBlock(block, time.Now().Unix())
+	return err
+}
+
+// ── p2p.Callbacks implementation ─────────────────────────────────────────────
+
+// HandleReceivedTx is called by the Gossiper after deduplication. It admits
+// the transaction to the mempool. Errors are policy-level and not fatal.
+func (s *nodeServices) HandleReceivedTx(_ context.Context, tx *types.Transaction) error {
+	return s.mp.Add(tx, s.db)
+}
+
+// HandleReceivedBlock is called by the Gossiper after deduplication. It
+// connects the block and revalidates the mempool.
+func (s *nodeServices) HandleReceivedBlock(_ context.Context, block *types.Block) error {
+	reorgResult, err := s.chain.ImportBlock(block, time.Now().Unix())
+	if err != nil {
+		return err
+	}
+	if reorgResult != nil {
+		for _, connBlock := range reorgResult.Connected {
+			s.mp.RemoveMined(connBlock)
+			s.mp.RemoveConflicting(connBlock)
+		}
+		for _, discBlock := range reorgResult.Disconnected {
+			for i := 1; i < len(discBlock.Transactions); i++ {
+				tx := discBlock.Transactions[i]
+				_ = s.mp.Add(&tx, s.db) // best-effort
+			}
+		}
+	} else {
+		s.mp.RemoveMined(block)
+		s.mp.RemoveConflicting(block)
+	}
+	return nil
 }

@@ -51,4 +51,15 @@ type Services interface {
 	// GetMempool returns a snapshot of all mempool entries sorted by
 	// descending fee rate.
 	GetMempool() []*types.MempoolEntry
+
+	// ReceiveTx processes a transaction pushed by a peer. Implementations
+	// should validate, add to the mempool, and re-broadcast via the Gossiper.
+	// Duplicate or invalid transactions should return a non-fatal error that
+	// the handler logs and discards.
+	ReceiveTx(ctx context.Context, tx *types.Transaction) error
+
+	// ReceiveBlock processes a block pushed by a peer. Implementations should
+	// validate, connect (or store as side-chain), and re-broadcast. Orphan
+	// blocks (unknown parent) should be dropped with a non-fatal error.
+	ReceiveBlock(ctx context.Context, block *types.Block) error
 }
