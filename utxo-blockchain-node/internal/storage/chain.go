@@ -9,14 +9,20 @@ import (
 
 var keyBestTip = []byte("best_tip")
 
-// SaveBlockIndex persists a BlockIndex entry keyed by block hash.
-func (db *DB) SaveBlockIndex(idx *types.BlockIndex) error {
+// saveBlockIndexTx is the transaction-scoped implementation shared by
+// DB.SaveBlockIndex and WriteTx.SaveBlockIndex.
+func saveBlockIndexTx(tx *bbolt.Tx, idx *types.BlockIndex) error {
 	data, err := marshalJSON(idx)
 	if err != nil {
 		return err
 	}
+	return tx.Bucket(bucketBlockIndex).Put(idx.Hash[:], data)
+}
+
+// SaveBlockIndex persists a BlockIndex entry keyed by block hash.
+func (db *DB) SaveBlockIndex(idx *types.BlockIndex) error {
 	return db.bolt.Update(func(tx *bbolt.Tx) error {
-		return tx.Bucket(bucketBlockIndex).Put(idx.Hash[:], data)
+		return saveBlockIndexTx(tx, idx)
 	})
 }
 
@@ -37,13 +43,19 @@ func (db *DB) GetBlockIndex(hash types.Hash32) (*types.BlockIndex, error) {
 	return idx, nil
 }
 
+// setActiveHashTx is the transaction-scoped implementation shared by
+// DB.SetActiveHash and WriteTx.SetActiveHash.
+func setActiveHashTx(tx *bbolt.Tx, height uint32, hash types.Hash32) error {
+	key := heightKey(height)
+	return tx.Bucket(bucketActiveChain).Put(key[:], hash[:])
+}
+
 // SetActiveHash records the canonical block hash at a given chain height.
 // The value is stored as raw 32 bytes (no JSON) because it is a fixed-size
 // binary value and the active-chain index is read on every block lookup.
 func (db *DB) SetActiveHash(height uint32, hash types.Hash32) error {
-	key := heightKey(height)
 	return db.bolt.Update(func(tx *bbolt.Tx) error {
-		return tx.Bucket(bucketActiveChain).Put(key[:], hash[:])
+		return setActiveHashTx(tx, height, hash)
 	})
 }
 
@@ -72,14 +84,20 @@ func (db *DB) GetActiveHash(height uint32) (types.Hash32, bool, error) {
 	return hash, found, nil
 }
 
-// SetBestTip persists the current best chain tip. Overwrites any previous value.
-func (db *DB) SetBestTip(tip *types.ChainTip) error {
+// setBestTipTx is the transaction-scoped implementation shared by
+// DB.SetBestTip and WriteTx.SetBestTip.
+func setBestTipTx(tx *bbolt.Tx, tip *types.ChainTip) error {
 	data, err := marshalJSON(tip)
 	if err != nil {
 		return err
 	}
+	return tx.Bucket(bucketChainMeta).Put(keyBestTip, data)
+}
+
+// SetBestTip persists the current best chain tip. Overwrites any previous value.
+func (db *DB) SetBestTip(tip *types.ChainTip) error {
 	return db.bolt.Update(func(tx *bbolt.Tx) error {
-		return tx.Bucket(bucketChainMeta).Put(keyBestTip, data)
+		return setBestTipTx(tx, tip)
 	})
 }
 
@@ -101,14 +119,20 @@ func (db *DB) GetBestTip() (*types.ChainTip, error) {
 	return tip, nil
 }
 
-// SaveUndo persists the undo record for a block keyed by its hash.
-func (db *DB) SaveUndo(undo *types.BlockUndo) error {
+// saveUndoTx is the transaction-scoped implementation shared by
+// DB.SaveUndo and WriteTx.SaveUndo.
+func saveUndoTx(tx *bbolt.Tx, undo *types.BlockUndo) error {
 	data, err := marshalJSON(undo)
 	if err != nil {
 		return err
 	}
+	return tx.Bucket(bucketUndo).Put(undo.BlockHash[:], data)
+}
+
+// SaveUndo persists the undo record for a block keyed by its hash.
+func (db *DB) SaveUndo(undo *types.BlockUndo) error {
 	return db.bolt.Update(func(tx *bbolt.Tx) error {
-		return tx.Bucket(bucketUndo).Put(undo.BlockHash[:], data)
+		return saveUndoTx(tx, undo)
 	})
 }
 

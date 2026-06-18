@@ -7,15 +7,21 @@ import (
 	bbolt "go.etcd.io/bbolt"
 )
 
-// SaveBlock persists a full block keyed by its hash.
-func (db *DB) SaveBlock(block *types.Block) error {
+// saveBlockTx is the transaction-scoped implementation shared by DB.SaveBlock
+// and WriteTx.SaveBlock.
+func saveBlockTx(tx *bbolt.Tx, block *types.Block) error {
 	data, err := marshalJSON(block)
 	if err != nil {
 		return err
 	}
 	hash := block.BlockHash()
+	return tx.Bucket(bucketBlocks).Put(hash[:], data)
+}
+
+// SaveBlock persists a full block keyed by its hash.
+func (db *DB) SaveBlock(block *types.Block) error {
 	return db.bolt.Update(func(tx *bbolt.Tx) error {
-		return tx.Bucket(bucketBlocks).Put(hash[:], data)
+		return saveBlockTx(tx, block)
 	})
 }
 
@@ -36,15 +42,21 @@ func (db *DB) GetBlock(hash types.Hash32) (*types.Block, error) {
 	return block, nil
 }
 
-// SaveHeader persists a block header keyed by its hash.
-func (db *DB) SaveHeader(header *types.BlockHeader) error {
+// saveHeaderTx is the transaction-scoped implementation shared by DB.SaveHeader
+// and WriteTx.SaveHeader.
+func saveHeaderTx(tx *bbolt.Tx, header *types.BlockHeader) error {
 	data, err := marshalJSON(header)
 	if err != nil {
 		return err
 	}
 	hash := header.BlockHash()
+	return tx.Bucket(bucketHeaders).Put(hash[:], data)
+}
+
+// SaveHeader persists a block header keyed by its hash.
+func (db *DB) SaveHeader(header *types.BlockHeader) error {
 	return db.bolt.Update(func(tx *bbolt.Tx) error {
-		return tx.Bucket(bucketHeaders).Put(hash[:], data)
+		return saveHeaderTx(tx, header)
 	})
 }
 

@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -312,5 +313,124 @@ func TestGetUndo_NotFound(t *testing.T) {
 	}
 	if got != nil {
 		t.Fatal("expected nil for unknown hash")
+	}
+}
+
+// ── atomic update tests ───────────────────────────────────────────────────────
+
+func TestUpdate_Atomic_AllSucceed(t *testing.T) {
+	// Write block + UTXO + undo in one transaction; all must persist.
+	db := tempDB(t)
+	block := sampleBlock()
+	utxo := sampleUTXO()
+	undo := &types.BlockUndo{
+		BlockHash: block.BlockHash(),
+		Spent: []types.SpentOutput{{
+			OutPoint: utxo.OutPoint,
+			Output:   utxo.Output,
+			Height:   utxo.Height,
+		}},
+	}
+
+	err := db.Update(func(tx *WriteTx) error {
+		if err := tx.SaveBlock(block); err != nil {
+			return err
+		}
+		if err := tx.PutUTXO(utxo); err != nil {
+			return err
+		}
+		return tx.SaveUndo(undo)
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	// Verify all three objects survived the commit.
+	gotBlock, err := db.GetBlock(block.BlockHash())
+	if err != nil || gotBlock == nil {
+		t.Errorf("block not persisted after atomic write: %v", err)
+	}
+	gotUTXO, err := db.GetUTXO(utxo.OutPoint)
+	if err != nil || gotUTXO == nil {
+		t.Errorf("UTXO not persisted after atomic write: %v", err)
+	}
+	gotUndo, err := db.GetUndo(undo.BlockHash)
+	if err != nil || gotUndo == nil {
+		t.Errorf("undo not persisted after atomic write: %v", err)
+	}
+}
+
+func TestUpdate_Atomic_Rollback(t *testing.T) {
+	// When fn returns an error mid-way, no writes should survive.
+	db := tempDB(t)
+	utxo := sampleUTXO()
+	sentinel := errors.New("intentional rollback")
+
+	err := db.Update(func(tx *WriteTx) error {
+		if err := tx.PutUTXO(utxo); err != nil {
+			return err
+		}
+		// Return an error after the PutUTXO write — bbolt must roll back.
+		return sentinel
+	})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected sentinel error, got: %v", err)
+	}
+
+	// The UTXO must NOT be present; bbolt rolled back the entire transaction.
+	got, err := db.GetUTXO(utxo.OutPoint)
+	if err != nil {
+		t.Fatalf("GetUTXO after rollback: %v", err)
+	}
+	if got != nil {
+		t.Fatal("UTXO persisted despite transaction rollback")
+	}
+}
+
+func TestUpdate_Atomic_MultiWriteKinds(t *testing.T) {
+	// Atomically write block, header, blockIndex, activeHash, bestTip, undo,
+	// UTXO — then verify every one is readable after commit.
+	db := tempDB(t)
+	block := sampleBlock()
+	header := block.Header
+	idx := sampleBlockIndex()
+	utxo := sampleUTXO()
+	tip := &types.ChainTip{Hash: block.BlockHash(), Height: 1, TotalWork: big.NewInt(1)}
+	undo := &types.BlockUndo{BlockHash: block.BlockHash()}
+
+	err := db.Update(func(tx *WriteTx) error {
+		if err := tx.SaveBlock(block); err != nil {
+			return err
+		}
+		if err := tx.SaveHeader(&header); err != nil {
+			return err
+		}
+		if err := tx.SaveBlockIndex(idx); err != nil {
+			return err
+		}
+		if err := tx.SetActiveHash(0, block.BlockHash()); err != nil {
+			return err
+		}
+		if err := tx.SetBestTip(tip); err != nil {
+			return err
+		}
+		if err := tx.SaveUndo(undo); err != nil {
+			return err
+		}
+		return tx.PutUTXO(utxo)
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	// Spot-check a few reads.
+	if gotBlock, _ := db.GetBlock(block.BlockHash()); gotBlock == nil {
+		t.Error("block missing after commit")
+	}
+	if gotTip, _ := db.GetBestTip(); gotTip == nil || gotTip.Height != 1 {
+		t.Error("tip missing or wrong after commit")
+	}
+	if gotHash, found, _ := db.GetActiveHash(0); !found || gotHash != block.BlockHash() {
+		t.Error("active hash missing or wrong after commit")
 	}
 }
