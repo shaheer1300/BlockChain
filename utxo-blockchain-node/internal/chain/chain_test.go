@@ -217,7 +217,7 @@ func TestImportBlock_BeforeGenesisReturnsError(t *testing.T) {
 	m, _ := chain.NewManager(db, 0)
 
 	dummy := &types.Block{Header: types.BlockHeader{Version: 1}}
-	if err := m.ImportBlock(dummy, time.Now().Unix()); err == nil {
+	if _, err := m.ImportBlock(dummy, time.Now().Unix()); err == nil {
 		t.Fatal("expected error when importing before genesis")
 	}
 }
@@ -226,7 +226,7 @@ func TestImportBlock_ConnectsBlock(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chain.db")
 	m, _, _, block1 := genesisAndBlock1(t, path)
 
-	if err := m.ImportBlock(block1, time.Now().Unix()+1); err != nil {
+	if _, err := m.ImportBlock(block1, time.Now().Unix()+1); err != nil {
 		t.Fatalf("ImportBlock: %v", err)
 	}
 
@@ -243,7 +243,7 @@ func TestImportBlock_CoinbaseUTXOAdded(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chain.db")
 	m, db, _, block1 := genesisAndBlock1(t, path)
 
-	if err := m.ImportBlock(block1, time.Now().Unix()+1); err != nil {
+	if _, err := m.ImportBlock(block1, time.Now().Unix()+1); err != nil {
 		t.Fatalf("ImportBlock: %v", err)
 	}
 
@@ -268,7 +268,7 @@ func TestImportBlock_UndoExists(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chain.db")
 	m, db, _, block1 := genesisAndBlock1(t, path)
 
-	if err := m.ImportBlock(block1, time.Now().Unix()+1); err != nil {
+	if _, err := m.ImportBlock(block1, time.Now().Unix()+1); err != nil {
 		t.Fatalf("ImportBlock: %v", err)
 	}
 
@@ -330,7 +330,7 @@ func TestImportBlock_SpendUTXO(t *testing.T) {
 		t.Fatalf("MineBlock: %v", err)
 	}
 
-	if err := m.ImportBlock(block1, now+1); err != nil {
+	if _, err := m.ImportBlock(block1, now+1); err != nil {
 		t.Fatalf("ImportBlock: %v", err)
 	}
 
@@ -386,7 +386,7 @@ func TestImportBlock_OrphanBlock(t *testing.T) {
 	orphan := &types.Block{
 		Header: types.BlockHeader{Version: 1, PrevHash: unknownHash},
 	}
-	err := m.ImportBlock(orphan, time.Now().Unix()+1)
+	_, err := m.ImportBlock(orphan, time.Now().Unix()+1)
 	if !errors.Is(err, chain.ErrOrphanBlock) {
 		t.Errorf("expected ErrOrphanBlock, got: %v", err)
 	}
@@ -419,7 +419,7 @@ func TestChain_ReopenPreservesTipAndUTXO(t *testing.T) {
 			context.Background(), genesisHeader, addr,
 			chain.BlockSubsidy(1), nil, 0, now+1,
 		)
-		if err := m.ImportBlock(block1, now+1); err != nil {
+		if _, err := m.ImportBlock(block1, now+1); err != nil {
 			t.Fatalf("ImportBlock: %v", err)
 		}
 		block1Hash = block1.BlockHash()
@@ -540,7 +540,7 @@ func TestMineBlock_ThenImport_HeightIncreases(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chain.db")
 	m, _, _, block1 := genesisAndBlock1(t, path)
 
-	if err := m.ImportBlock(block1, time.Now().Unix()+1); err != nil {
+	if _, err := m.ImportBlock(block1, time.Now().Unix()+1); err != nil {
 		t.Fatalf("ImportBlock block1: %v", err)
 	}
 	if got := m.Tip().Height; got != 1 {
@@ -558,7 +558,7 @@ func TestMineBlock_ThenImport_HeightIncreases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MineBlock block2: %v", err)
 	}
-	if err := m.ImportBlock(block2, time.Now().Unix()+2); err != nil {
+	if _, err := m.ImportBlock(block2, time.Now().Unix()+2); err != nil {
 		t.Fatalf("ImportBlock block2: %v", err)
 	}
 	if got := m.Tip().Height; got != 2 {
@@ -570,7 +570,7 @@ func TestMineBlock_MinerReceivesCoinbaseUTXO(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chain.db")
 	m, db, _, block1 := genesisAndBlock1(t, path)
 
-	if err := m.ImportBlock(block1, time.Now().Unix()+1); err != nil {
+	if _, err := m.ImportBlock(block1, time.Now().Unix()+1); err != nil {
 		t.Fatalf("ImportBlock: %v", err)
 	}
 
@@ -593,7 +593,7 @@ func TestMineBlock_MinedBlockIsValidOnImport(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chain.db")
 	m, _, _, block1 := genesisAndBlock1(t, path)
 
-	if err := m.ImportBlock(block1, time.Now().Unix()+1); err != nil {
+	if _, err := m.ImportBlock(block1, time.Now().Unix()+1); err != nil {
 		t.Errorf("mined block failed ImportBlock: %v", err)
 	}
 }

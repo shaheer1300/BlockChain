@@ -57,3 +57,27 @@ func (db *DB) DeleteUTXO(op types.OutPoint) error {
 		return deleteUTXOTx(tx, op)
 	})
 }
+
+// GetUTXOsByAddress performs a full scan of the UTXO bucket and returns
+// every entry whose Recipient address matches addr. It is O(n) in the total
+// UTXO set size; use for API queries only, not for consensus hot paths.
+func (db *DB) GetUTXOsByAddress(addr types.Address) ([]*types.UTXO, error) {
+	var results []*types.UTXO
+	err := db.bolt.View(func(tx *bbolt.Tx) error {
+		return tx.Bucket(bucketUTXOs).ForEach(func(_, v []byte) error {
+			var utxo types.UTXO
+			if err := unmarshalJSON(v, &utxo); err != nil {
+				return err
+			}
+			if utxo.Output.Recipient == addr {
+				u := utxo
+				results = append(results, &u)
+			}
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("storage: GetUTXOsByAddress: %w", err)
+	}
+	return results, nil
+}

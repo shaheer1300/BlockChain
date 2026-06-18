@@ -86,3 +86,40 @@ func (w *WriteTx) GetUTXO(op types.OutPoint) (*types.UTXO, error) {
 	}
 	return &utxo, nil
 }
+
+// GetBlock reads a full block within the transaction. Returns (nil, nil) when
+// not found. Used by disconnectBlockTx during reorg to load blocks for UTXO
+// reversal and undo reconstruction.
+func (w *WriteTx) GetBlock(hash types.Hash32) (*types.Block, error) {
+	data := w.tx.Bucket(bucketBlocks).Get(hash[:])
+	if data == nil {
+		return nil, nil
+	}
+	var block types.Block
+	if err := unmarshalJSON(data, &block); err != nil {
+		return nil, err
+	}
+	return &block, nil
+}
+
+// GetUndo reads the undo record for blockHash within the transaction.
+// Returns (nil, nil) when not found. Used by disconnectBlockTx during reorg.
+func (w *WriteTx) GetUndo(hash types.Hash32) (*types.BlockUndo, error) {
+	data := w.tx.Bucket(bucketUndo).Get(hash[:])
+	if data == nil {
+		return nil, nil
+	}
+	var undo types.BlockUndo
+	if err := unmarshalJSON(data, &undo); err != nil {
+		return nil, err
+	}
+	return &undo, nil
+}
+
+// DeleteActiveHash removes the canonical block hash entry at height from the
+// active-chain index. Called during block disconnection when a reorg removes
+// a height from the active chain before the new branch occupies it.
+func (w *WriteTx) DeleteActiveHash(height uint32) error {
+	key := heightKey(height)
+	return w.tx.Bucket(bucketActiveChain).Delete(key[:])
+}

@@ -5,12 +5,15 @@ package api
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/config"
+	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/types"
 )
 
 const (
@@ -24,13 +27,15 @@ const (
 type Server struct {
 	cfg  *config.Config
 	log  *slog.Logger
+	svc  Services // nil in skeleton mode — routes that need it return 503
 	http *http.Server
 }
 
-// New constructs a Server and registers all routes. The HTTP listener
-// is not started until Start is called.
-func New(cfg *config.Config, log *slog.Logger) *Server {
-	s := &Server{cfg: cfg, log: log}
+// New constructs a Server and registers all routes. svc may be nil during
+// early startup or in tests that only exercise /health and /peers. Any route
+// that requires svc returns 503 when svc is nil.
+func New(cfg *config.Config, log *slog.Logger, svc Services) *Server {
+	s := &Server{cfg: cfg, log: log, svc: svc}
 	mux := http.NewServeMux()
 	s.registerRoutes(mux)
 	s.http = &http.Server{
@@ -65,7 +70,69 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("GET /status", s.handleStatus)
+	mux.HandleFunc("GET /blocks/{hash}", s.handleGetBlock)
+	mux.HandleFunc("GET /utxos/{address}", s.handleGetUTXOs)
+	mux.HandleFunc("GET /balance/{address}", s.handleGetBalance)
+	mux.HandleFunc("GET /mempool", s.handleGetMempool)
+	mux.HandleFunc("POST /tx", s.handleSubmitTx)
+	mux.HandleFunc("POST /mine", s.handleMine)
+	mux.HandleFunc("GET /peers", s.handleGetPeers)
 }
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+// errorResponse is the JSON envelope for all error responses.
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
+// writeJSON sets Content-Type, writes the status code, and encodes v as JSON.
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// writeError writes a structured JSON error response.
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, errorResponse{Error: msg})
+}
+
+// requireSvc checks that s.svc is available and writes 503 if not.
+func (s *Server) requireSvc(w http.ResponseWriter) bool {
+	if s.svc == nil {
+		writeError(w, http.StatusServiceUnavailable, "node services not yet initialized")
+		return false
+	}
+	return true
+}
+
+// parseHash decodes a 64-character hex string into a Hash32.
+func parseHash(raw string) (types.Hash32, error) {
+	var h types.Hash32
+	if err := h.SetHex(raw); err != nil {
+		return h, err
+	}
+	return h, nil
+}
+
+// parseAddress decodes a 40-character hex string into an Address.
+func parseAddress(raw string) (types.Address, error) {
+	b, err := hex.DecodeString(raw)
+	if err != nil {
+		return types.Address{}, fmt.Errorf("invalid hex: %w", err)
+	}
+	if len(b) != types.AddressSize {
+		return types.Address{}, fmt.Errorf("address must be %d bytes (%d hex chars), got %d bytes",
+			types.AddressSize, types.AddressSize*2, len(b))
+	}
+	var addr types.Address
+	copy(addr[:], b)
+	return addr, nil
+}
+
+// ── handlers ──────────────────────────────────────────────────────────────────
 
 // healthResponse is the JSON payload returned by GET /health.
 type healthResponse struct {
@@ -74,6 +141,7 @@ type healthResponse struct {
 	Network string `json:"network"`
 }
 
+// GET /health — always available; does not require svc.
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, healthResponse{
 		Status:  "ok",
@@ -82,10 +150,168 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// writeJSON sets Content-Type, writes the status code, and encodes v as
-// JSON. Any encode error after the header is sent is silently discarded.
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+// GET /status — returns chain height and best-tip hash.
+func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
+	if !s.requireSvc(w) {
+		return
+	}
+	writeJSON(w, http.StatusOK, s.svc.Status())
+}
+
+// GET /blocks/{hash} — returns the full block for the given hash.
+func (s *Server) handleGetBlock(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSvc(w) {
+		return
+	}
+	hash, err := parseHash(r.PathValue("hash"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid block hash: "+err.Error())
+		return
+	}
+	block, err := s.svc.GetBlock(hash)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if block == nil {
+		writeError(w, http.StatusNotFound, "block not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, block)
+}
+
+// utxosResponse is the JSON payload for GET /utxos/{address}.
+type utxosResponse struct {
+	Address string        `json:"address"`
+	UTXOs   []*types.UTXO `json:"utxos"`
+}
+
+// GET /utxos/{address} — returns all UTXOs for a given address.
+func (s *Server) handleGetUTXOs(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSvc(w) {
+		return
+	}
+	addr, err := parseAddress(r.PathValue("address"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid address: "+err.Error())
+		return
+	}
+	utxos, err := s.svc.GetUTXOsByAddress(addr)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if utxos == nil {
+		utxos = []*types.UTXO{}
+	}
+	writeJSON(w, http.StatusOK, utxosResponse{Address: addr.String(), UTXOs: utxos})
+}
+
+// balanceResponse is the JSON payload for GET /balance/{address}.
+type balanceResponse struct {
+	Address string       `json:"address"`
+	Balance types.Amount `json:"balance"`
+}
+
+// GET /balance/{address} — returns the total confirmed balance for an address.
+func (s *Server) handleGetBalance(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSvc(w) {
+		return
+	}
+	addr, err := parseAddress(r.PathValue("address"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid address: "+err.Error())
+		return
+	}
+	utxos, err := s.svc.GetUTXOsByAddress(addr)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	var balance types.Amount
+	for _, u := range utxos {
+		next, addErr := balance.SafeAdd(u.Output.Value)
+		if addErr != nil {
+			writeError(w, http.StatusInternalServerError, "balance overflow")
+			return
+		}
+		balance = next
+	}
+	writeJSON(w, http.StatusOK, balanceResponse{Address: addr.String(), Balance: balance})
+}
+
+// mempoolResponse is the JSON payload for GET /mempool.
+type mempoolResponse struct {
+	Count   int                   `json:"count"`
+	Entries []*types.MempoolEntry `json:"entries"`
+}
+
+// GET /mempool — returns a snapshot of the mempool sorted by fee rate.
+func (s *Server) handleGetMempool(w http.ResponseWriter, _ *http.Request) {
+	if !s.requireSvc(w) {
+		return
+	}
+	entries := s.svc.GetMempool()
+	if entries == nil {
+		entries = []*types.MempoolEntry{}
+	}
+	writeJSON(w, http.StatusOK, mempoolResponse{Count: len(entries), Entries: entries})
+}
+
+// submitTxResponse is the JSON payload for POST /tx.
+type submitTxResponse struct {
+	TxID string `json:"txid"`
+}
+
+// POST /tx — validates and submits a transaction to the mempool.
+func (s *Server) handleSubmitTx(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSvc(w) {
+		return
+	}
+	var tx types.Transaction
+	if err := json.NewDecoder(r.Body).Decode(&tx); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid transaction JSON: "+err.Error())
+		return
+	}
+	if err := s.svc.SubmitTx(&tx); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, submitTxResponse{TxID: tx.TxID().String()})
+}
+
+// POST /mine — mines one block using mempool transactions and the configured
+// miner address. The request body is ignored.
+func (s *Server) handleMine(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSvc(w) {
+		return
+	}
+	result, err := s.svc.Mine(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// peersResponse is the JSON payload for GET /peers.
+type peersResponse struct {
+	Peers []string `json:"peers"`
+}
+
+// GET /peers — returns the configured peer list; does not require svc.
+func (s *Server) handleGetPeers(w http.ResponseWriter, _ *http.Request) {
+	peers := s.cfg.Peers
+	if peers == nil {
+		peers = []string{}
+	}
+	// If services are available, delegate to svc (allows node to report
+	// dynamically discovered peers in future milestones).
+	if s.svc != nil {
+		peers = s.svc.GetPeers()
+		if peers == nil {
+			peers = []string{}
+		}
+	}
+	writeJSON(w, http.StatusOK, peersResponse{Peers: peers})
 }
