@@ -222,6 +222,16 @@ func (m *Mempool) remove(txID types.Hash32) {
 	delete(m.entries, txID)
 }
 
+// Clear drops every entry from the mempool. Intended for diagnostic and
+// demo workflows where the operator wants a clean slate without restarting
+// the node. Consensus paths do not call this.
+func (m *Mempool) Clear() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.entries = make(map[types.Hash32]*types.MempoolEntry)
+	m.spends = make(map[types.OutPoint]types.Hash32)
+}
+
 // HasSpend reports whether any transaction in the mempool spends op.
 func (m *Mempool) HasSpend(op types.OutPoint) bool {
 	m.mu.RLock()

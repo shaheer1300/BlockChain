@@ -26,6 +26,7 @@ type nodeServices struct {
 	gossiper   *p2p.Gossiper // nil until wired in
 	minerAddr  types.Address // zero if not configured
 	powNibbles int
+	wallets    *walletStore // nil unless DemoMode is enabled
 }
 
 // Status returns a lightweight snapshot of the current chain state.

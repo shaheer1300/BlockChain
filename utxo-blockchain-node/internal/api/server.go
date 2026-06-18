@@ -27,20 +27,48 @@ const (
 type Server struct {
 	cfg  *config.Config
 	log  *slog.Logger
-	svc  Services // nil in skeleton mode — routes that need it return 503
+	svc  Services           // nil in skeleton mode — routes that need it return 503
+	diag DiagnosticServices // optional; enables GET /utxos and GET /blocks
+	demo DemoServices       // optional; enables POST/GET /demo/*
 	http *http.Server
+}
+
+// Options bundles optional sub-services. Pass nil sub-services to disable
+// the corresponding routes (they will return 404 because they are not
+// registered when the matching interface is nil).
+type Options struct {
+	Diagnostic DiagnosticServices
+	Demo       DemoServices
+	// EnableCORS, when true, wraps the mux with a permissive CORS handler
+	// suitable for local development frontends.
+	EnableCORS bool
 }
 
 // New constructs a Server and registers all routes. svc may be nil during
 // early startup or in tests that only exercise /health and /peers. Any route
-// that requires svc returns 503 when svc is nil.
-func New(cfg *config.Config, log *slog.Logger, svc Services) *Server {
-	s := &Server{cfg: cfg, log: log, svc: svc}
+// that requires svc returns 503 when svc is nil. opts may be nil.
+func New(cfg *config.Config, log *slog.Logger, svc Services, opts *Options) *Server {
+	if opts == nil {
+		opts = &Options{}
+	}
+	s := &Server{
+		cfg:  cfg,
+		log:  log,
+		svc:  svc,
+		diag: opts.Diagnostic,
+		demo: opts.Demo,
+	}
 	mux := http.NewServeMux()
 	s.registerRoutes(mux)
+
+	var handler http.Handler = mux
+	if opts.EnableCORS {
+		handler = corsMiddleware(handler)
+	}
+
 	s.http = &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
@@ -81,6 +109,25 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// P2P gossip receive endpoints — called by remote peers.
 	mux.HandleFunc("POST /p2p/tx", s.handleP2PTx)
 	mux.HandleFunc("POST /p2p/block", s.handleP2PBlock)
+
+	// Diagnostic (read-only) endpoints — registered only if a
+	// DiagnosticServices implementation was provided.
+	if s.diag != nil {
+		mux.HandleFunc("GET /utxos", s.handleListUTXOs)
+		mux.HandleFunc("GET /blocks", s.handleListBlocks)
+	}
+
+	// Educational demo endpoints — registered only if a DemoServices
+	// implementation was provided.
+	if s.demo != nil {
+		mux.HandleFunc("GET /demo/state", s.handleDemoState)
+		mux.HandleFunc("GET /demo/wallets", s.handleDemoListWallets)
+		mux.HandleFunc("POST /demo/wallets", s.handleDemoCreateWallet)
+		mux.HandleFunc("POST /demo/tx", s.handleDemoBuildTx)
+		mux.HandleFunc("POST /demo/double-spend", s.handleDemoDoubleSpend)
+		mux.HandleFunc("POST /demo/mine", s.handleDemoMine)
+		mux.HandleFunc("POST /demo/reset", s.handleDemoReset)
+	}
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

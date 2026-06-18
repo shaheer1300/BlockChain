@@ -85,7 +85,27 @@ func New(cfg *config.Config, log *slog.Logger) (*Node, error) {
 	g := p2p.New(cfg.Peers, log, svc)
 	svc.gossiper = g
 
-	srv := api.New(cfg, log, svc)
+	// When DemoMode is enabled, attach an in-memory wallet store (persisted
+	// to <data-dir>/wallets.json) and wire the diagnostic + demo HTTP
+	// endpoints with a permissive CORS handler.
+	var apiOpts *api.Options
+	if cfg.DemoMode {
+		walletsPath := filepath.Join(cfg.DataDir, "wallets.json")
+		ws, wErr := newWalletStore(walletsPath)
+		if wErr != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("node: init demo wallets: %w", wErr)
+		}
+		svc.wallets = ws
+		apiOpts = &api.Options{
+			Diagnostic: svc,
+			Demo:       svc,
+			EnableCORS: true,
+		}
+		log.Info("demo mode enabled — extra /demo/* and /utxos /blocks routes registered")
+	}
+
+	srv := api.New(cfg, log, svc, apiOpts)
 
 	return &Node{
 		cfg:       cfg,
