@@ -35,6 +35,12 @@ type Config struct {
 	// PowTargetPrefixZeroes is the number of leading zero hex nibbles
 	// required by proof-of-work. 4 means ~65 k hashes on average.
 	PowTargetPrefixZeroes int
+	// DemoMode enables the educational demo subsystem: extra HTTP routes
+	// under /demo/*, the diagnostic /utxos and /blocks list endpoints,
+	// in-memory demo wallets persisted to data/wallets.json, and a
+	// permissive CORS handler suitable for the local web/ frontend.
+	// Never enable in a production deployment.
+	DemoMode bool
 }
 
 // Load reads environment variables and returns a fully-validated Config.
@@ -54,7 +60,19 @@ func Load() (*Config, error) {
 		Peers:                 parsePeers(os.Getenv("PEERS")),
 		LogLevel:              envOr("LOG_LEVEL", "info"),
 		PowTargetPrefixZeroes: pow,
+		DemoMode:              parseBoolEnv("DEMO_MODE"),
 	}, nil
+}
+
+// parseBoolEnv returns true when key is set to a truthy value
+// ("1", "true", "yes", "on", case-insensitive); false otherwise.
+func parseBoolEnv(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // envOr returns the value of key from the environment, or defaultVal when

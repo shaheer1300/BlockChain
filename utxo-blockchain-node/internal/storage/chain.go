@@ -84,6 +84,31 @@ func (db *DB) GetActiveHash(height uint32) (types.Hash32, bool, error) {
 	return hash, found, nil
 }
 
+// ListActiveHashes returns every active-chain hash in ascending height
+// order. The result length equals tip.Height+1 when the chain is fully
+// consistent. Returns an empty slice when the chain has not been
+// initialised. The bucket is iterated using bbolt's natural byte order,
+// which matches the big-endian heightKey encoding.
+func (db *DB) ListActiveHashes() ([]types.Hash32, error) {
+	var hashes []types.Hash32
+	err := db.bolt.View(func(tx *bbolt.Tx) error {
+		return tx.Bucket(bucketActiveChain).ForEach(func(_, v []byte) error {
+			if len(v) != types.HashSize {
+				return fmt.Errorf("storage: ListActiveHashes: got %d bytes, want %d",
+					len(v), types.HashSize)
+			}
+			var h types.Hash32
+			copy(h[:], v)
+			hashes = append(hashes, h)
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("storage: ListActiveHashes: %w", err)
+	}
+	return hashes, nil
+}
+
 // setBestTipTx is the transaction-scoped implementation shared by
 // DB.SetBestTip and WriteTx.SetBestTip.
 func setBestTipTx(tx *bbolt.Tx, tip *types.ChainTip) error {
