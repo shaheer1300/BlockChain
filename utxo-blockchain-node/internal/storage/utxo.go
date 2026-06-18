@@ -81,3 +81,25 @@ func (db *DB) GetUTXOsByAddress(addr types.Address) ([]*types.UTXO, error) {
 	}
 	return results, nil
 }
+
+// GetAllUTXOs performs a full scan of the UTXO bucket and returns every
+// entry. It is O(n) in the total UTXO set size; use for diagnostic and
+// demo endpoints only, not for consensus hot paths.
+func (db *DB) GetAllUTXOs() ([]*types.UTXO, error) {
+	var results []*types.UTXO
+	err := db.bolt.View(func(tx *bbolt.Tx) error {
+		return tx.Bucket(bucketUTXOs).ForEach(func(_, v []byte) error {
+			var utxo types.UTXO
+			if err := unmarshalJSON(v, &utxo); err != nil {
+				return err
+			}
+			u := utxo
+			results = append(results, &u)
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("storage: GetAllUTXOs: %w", err)
+	}
+	return results, nil
+}

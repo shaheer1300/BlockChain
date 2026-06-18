@@ -102,7 +102,7 @@ func newTestServerWith(t *testing.T, svc Services) *Server {
 		Peers:     []string{"http://peer1:8001"},
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return New(cfg, log, svc)
+	return New(cfg, log, svc, nil)
 }
 
 func serveRequest(s *Server, req *http.Request) *httptest.ResponseRecorder {
