@@ -1,0 +1,1 @@
+Basic file called test.go to check if Go is working on my systems correctly. 

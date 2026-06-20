@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background:
+      radial-gradient(1200px 800px at 10% -10%, rgba(99, 102, 241, 0.08), transparent 60%),
+      radial-gradient(900px 700px at 100% 0%, rgba(34, 211, 238, 0.06), transparent 60%),
+      #020617;
+    min-height: 100vh;
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.25);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.4); }
+}
+
+@layer components {
+  /* Frosted glass panel — the building block of every section. */
+  .panel {
+    @apply rounded-2xl border border-slate-800/80 bg-slate-900/40
+           backdrop-blur-sm shadow-xl shadow-black/30;
+  }
+
+  .panel-title {
+    @apply text-sm font-semibold uppercase tracking-wider text-slate-300;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5
+           text-xs font-medium ring-1 ring-inset;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2
+           text-sm font-medium transition
+           focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-950
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-indigo-500 text-white hover:bg-indigo-400
+           focus:ring-indigo-400 shadow-lg shadow-indigo-500/30;
+  }
+
+  .btn-secondary {
+    @apply btn bg-slate-800 text-slate-100 hover:bg-slate-700
+           focus:ring-slate-500;
+  }
+
+  .btn-danger {
+    @apply btn bg-rose-600 text-white hover:bg-rose-500
+           focus:ring-rose-400;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-slate-700 bg-slate-900/70
+           px-3 py-2 text-sm text-slate-100 placeholder-slate-500
+           focus:border-indigo-500 focus:outline-none focus:ring-1
+           focus:ring-indigo-500;
+  }
+
+  .mono {
+    @apply font-mono text-xs tracking-tight;
+  }
+
+  /* A short, copyable hex string with a hover tooltip-style truncation. */
+  .hash {
+    @apply mono text-slate-400 hover:text-slate-200 cursor-pointer
+           transition-colors;
+  }
+}
+
+/* Tiny utility: animated dashed line for "in-flight" tx visualisation. */
+.dashed-flow {
+  background-image: repeating-linear-gradient(
+    90deg,
+    currentColor 0 6px,
+    transparent 6px 12px
+  );
+  animation: flow 0.8s linear infinite;
+}
+@keyframes flow {
+  to { background-position: 12px 0; }
+}
