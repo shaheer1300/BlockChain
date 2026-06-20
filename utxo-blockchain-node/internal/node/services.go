@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/api"
@@ -18,7 +19,14 @@ import (
 // nodeServices implements api.Services and p2p.Callbacks. It bridges the
 // HTTP layer to the chain manager, mempool, storage, and gossiper without
 // putting any consensus logic in the handlers.
+//
+// mu protects the two fields that may be swapped atomically during a hard
+// reset: db and chain. All public methods that touch db or chain must
+// acquire mu.RLock(); DemoHardReset acquires the exclusive mu.Lock().
+// Internal "noLock" variants are called by composite methods that already
+// hold the lock, to avoid reentrant deadlocks.
 type nodeServices struct {
+	mu         sync.RWMutex
 	cfg        *config.Config
 	db         *storage.DB
 	chain      *chain.Manager
@@ -29,8 +37,17 @@ type nodeServices struct {
 	wallets    *walletStore // nil unless DemoMode is enabled
 }
 
+// ── public api.Services methods ───────────────────────────────────────────────
+
 // Status returns a lightweight snapshot of the current chain state.
 func (s *nodeServices) Status() api.StatusResult {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.statusNoLock()
+}
+
+// statusNoLock is the lock-free body of Status. Call only while holding mu.
+func (s *nodeServices) statusNoLock() api.StatusResult {
 	res := api.StatusResult{
 		NodeID:  s.cfg.NodeID,
 		Network: s.cfg.NetworkID,
@@ -45,11 +62,15 @@ func (s *nodeServices) Status() api.StatusResult {
 
 // GetBlock delegates to persistent storage.
 func (s *nodeServices) GetBlock(hash types.Hash32) (*types.Block, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.db.GetBlock(hash)
 }
 
 // GetUTXOsByAddress scans the UTXO set for outputs belonging to addr.
 func (s *nodeServices) GetUTXOsByAddress(addr types.Address) ([]*types.UTXO, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.db.GetUTXOsByAddress(addr)
 }
 
@@ -58,6 +79,13 @@ func (s *nodeServices) GetUTXOsByAddress(addr types.Address) ([]*types.UTXO, err
 // (GetUTXO returns the committed chain state). On success the transaction
 // is broadcast to peers.
 func (s *nodeServices) SubmitTx(tx *types.Transaction) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.submitTxNoLock(tx)
+}
+
+// submitTxNoLock is the lock-free body of SubmitTx. Call only while holding mu.
+func (s *nodeServices) submitTxNoLock(tx *types.Transaction) error {
 	if err := s.mp.Add(tx, s.db); err != nil {
 		return err
 	}
@@ -70,6 +98,13 @@ func (s *nodeServices) SubmitTx(tx *types.Transaction) error {
 // Mine builds a candidate block from the current mempool, finds a PoW
 // nonce, connects the block, and cleans up the mempool.
 func (s *nodeServices) Mine(ctx context.Context) (*api.MineResult, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.mineNoLock(ctx)
+}
+
+// mineNoLock is the lock-free body of Mine. Call only while holding mu.
+func (s *nodeServices) mineNoLock(ctx context.Context) (*api.MineResult, error) {
 	if s.minerAddr.IsZero() {
 		return nil, errors.New("MINER_ADDRESS is not configured; cannot mine")
 	}
@@ -87,14 +122,12 @@ func (s *nodeServices) Mine(ctx context.Context) (*api.MineResult, error) {
 	height := tip.Height + 1
 	subsidy := chain.BlockSubsidy(height)
 
-	// Collect mempool transactions in fee-rate order and accumulate fees.
 	entries := s.mp.Entries()
 	extraTxs := make([]types.Transaction, 0, len(entries))
 	var totalFees types.Amount
 	for _, e := range entries {
 		next, feeErr := totalFees.SafeAdd(e.Fee)
 		if feeErr != nil {
-			// Fee total overflowed — stop including transactions.
 			break
 		}
 		totalFees = next
@@ -120,7 +153,6 @@ func (s *nodeServices) Mine(ctx context.Context) (*api.MineResult, error) {
 	}
 
 	if reorgResult != nil {
-		// A reorg occurred (unexpected during mining, but handle it correctly).
 		for _, connBlock := range reorgResult.Connected {
 			s.mp.RemoveMined(connBlock)
 			s.mp.RemoveConflicting(connBlock)
@@ -128,7 +160,7 @@ func (s *nodeServices) Mine(ctx context.Context) (*api.MineResult, error) {
 		for _, discBlock := range reorgResult.Disconnected {
 			for i := 1; i < len(discBlock.Transactions); i++ {
 				tx := discBlock.Transactions[i]
-				_ = s.mp.Add(&tx, s.db) // best-effort; ignore errors
+				_ = s.mp.Add(&tx, s.db)
 			}
 		}
 	} else {
@@ -137,7 +169,6 @@ func (s *nodeServices) Mine(ctx context.Context) (*api.MineResult, error) {
 	}
 
 	newTip := s.chain.Tip()
-	// Broadcast the newly mined block to all peers.
 	if s.gossiper != nil {
 		s.gossiper.BroadcastBlock(ctx, block)
 	}
@@ -161,37 +192,39 @@ func (s *nodeServices) GetMempool() []*types.MempoolEntry {
 // ── api.Services gossip methods ───────────────────────────────────────────────
 
 // ReceiveTx handles an inbound transaction from a peer (via POST /p2p/tx).
-// It admits the transaction to the local mempool, then re-broadcasts it.
 func (s *nodeServices) ReceiveTx(ctx context.Context, tx *types.Transaction) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if s.gossiper != nil {
 		return s.gossiper.ReceiveTx(ctx, tx)
 	}
-	// Gossiper not yet wired (should not happen in production).
 	return s.mp.Add(tx, s.db)
 }
 
 // ReceiveBlock handles an inbound block from a peer (via POST /p2p/block).
-// It connects the block locally, then re-broadcasts it.
 func (s *nodeServices) ReceiveBlock(ctx context.Context, block *types.Block) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if s.gossiper != nil {
 		return s.gossiper.ReceiveBlock(ctx, block)
 	}
-	// Gossiper not yet wired (should not happen in production).
 	_, err := s.chain.ImportBlock(block, time.Now().Unix())
 	return err
 }
 
 // ── p2p.Callbacks implementation ─────────────────────────────────────────────
 
-// HandleReceivedTx is called by the Gossiper after deduplication. It admits
-// the transaction to the mempool. Errors are policy-level and not fatal.
+// HandleReceivedTx is called by the Gossiper after deduplication.
 func (s *nodeServices) HandleReceivedTx(_ context.Context, tx *types.Transaction) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.mp.Add(tx, s.db)
 }
 
-// HandleReceivedBlock is called by the Gossiper after deduplication. It
-// connects the block and revalidates the mempool.
+// HandleReceivedBlock is called by the Gossiper after deduplication.
 func (s *nodeServices) HandleReceivedBlock(_ context.Context, block *types.Block) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	reorgResult, err := s.chain.ImportBlock(block, time.Now().Unix())
 	if err != nil {
 		return err
@@ -204,7 +237,7 @@ func (s *nodeServices) HandleReceivedBlock(_ context.Context, block *types.Block
 		for _, discBlock := range reorgResult.Disconnected {
 			for i := 1; i < len(discBlock.Transactions); i++ {
 				tx := discBlock.Transactions[i]
-				_ = s.mp.Add(&tx, s.db) // best-effort
+				_ = s.mp.Add(&tx, s.db)
 			}
 		}
 	} else {
@@ -213,3 +246,4 @@ func (s *nodeServices) HandleReceivedBlock(_ context.Context, block *types.Block
 	}
 	return nil
 }
+

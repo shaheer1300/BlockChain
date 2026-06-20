@@ -149,8 +149,13 @@ type DemoServices interface {
 	// as InitGenesis using MinerWallet as the genesis miner.
 	DemoMine(ctx context.Context, req DemoMineRequest) (*MineResult, error)
 
-	// DemoReset clears the mempool, drops on-disk chain data, and forgets
-	// every demo wallet. The caller should restart the node-services
-	// process afterwards if it relies on long-lived references.
+	// DemoReset clears wallets and the mempool. On-disk chain state is
+	// preserved; use DemoHardReset for a full wipe.
 	DemoReset() error
+
+	// DemoHardReset performs a full destructive reset: closes and deletes the
+	// on-disk database, wipes wallets, clears the mempool, then recreates
+	// clean storage. Returns the empty initial state so the frontend can
+	// immediately reflect the clean slate without an extra round-trip.
+	DemoHardReset(ctx context.Context) (*DemoStateResponse, error)
 }

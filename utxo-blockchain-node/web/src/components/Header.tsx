@@ -6,10 +6,11 @@ interface Props {
   status: StatusResult | undefined
   isPolling: boolean
   onReset: () => void
+  onHardReset: () => void
   onExplain: (topic: string) => void
 }
 
-export function Header({ status, isPolling, onReset, onExplain }: Props) {
+export function Header({ status, isPolling, onReset, onHardReset, onExplain }: Props) {
   const [secondsAgo, setSecondsAgo] = useState(0)
   useEffect(() => {
     if (!isPolling) return
@@ -72,9 +73,18 @@ export function Header({ status, isPolling, onReset, onExplain }: Props) {
         </div>
       </div>
 
-      <button onClick={onReset} className="btn-danger text-xs px-3 py-1.5">
-        Reset
-      </button>
+      <div className="flex items-center gap-2">
+        <button onClick={onReset} className="btn-secondary text-xs px-3 py-1.5">
+          Soft Reset
+        </button>
+        <button
+          onClick={onHardReset}
+          className="btn-danger text-xs px-3 py-1.5 ring-2 ring-rose-500/40"
+          title="Wipes the on-disk chain, all wallets, UTXOs, mempool and blocks"
+        >
+          ⚠ Hard Reset Demo
+        </button>
+      </div>
     </header>
   )
 }

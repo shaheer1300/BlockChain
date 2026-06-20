@@ -163,11 +163,22 @@ func (s *Server) handleDemoMine(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
-// POST /demo/reset — clear all demo state.
+// POST /demo/reset — clear in-memory demo state (wallets + mempool only).
 func (s *Server) handleDemoReset(w http.ResponseWriter, _ *http.Request) {
 	if err := s.demo.DemoReset(); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
+}
+
+// POST /demo/hard-reset — full destructive reset: wipes on-disk chain +
+// wallets + mempool, then returns the clean initial state.
+func (s *Server) handleDemoHardReset(w http.ResponseWriter, r *http.Request) {
+	state, err := s.demo.DemoHardReset(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, state)
 }
