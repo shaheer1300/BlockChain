@@ -10,9 +10,13 @@
 
 Open two PowerShell terminals:
 
-1. Terminal 1: start the blockchain node.
+1. Terminal 1: start the blockchain node. This is just an example, you can change the env variables as you see fit
    ```powershell
    cd "D:\Github Projects\BlockChain\utxo-blockchain-node"
+   $env:DEMO_MODE = "1"
+   $env:HTTP_ADDR = "127.0.0.1:8001"
+   $env:DATA_DIR = "./data/demo"
+   $env:POW_TARGET_PREFIX_ZEROES = "2"
    go run ./cmd/node
    ```
 2. Terminal 2: start the frontend.
