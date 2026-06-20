@@ -149,5 +149,9 @@ out/
 .nuxt/
 .vercel/
 
+.vite/
+
 # notes, specifically scratch notes
 scratchnotes.md
+
+data/
