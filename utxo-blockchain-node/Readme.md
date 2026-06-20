@@ -73,3 +73,15 @@ Initial simple peer gossip over HTTP. Later you can replace it with TCP or libp2
 `internal/node`
 
 Orchestrator. Wires together chain, mempool, storage, API, P2P, and mining.
+
+## Demo Screenshots
+
+When you deploy this will be the first screen you will see.
+
+<img width="1892" height="906" alt="image" src="https://github.com/user-attachments/assets/b743f2cf-3028-428f-8694-a0e8ff42d032" />
+
+Click on initialise demo button to initialise the block chain. 
+
+<img width="1912" height="907" alt="image" src="https://github.com/user-attachments/assets/6769ea3b-54cc-490d-b47e-cb56bd3ae65b" />
+
+You can play around with it and see how mempool, block chain, and transactions. It will also let you create a double spend attempt. If you break the system I implemented raise an issue and let me know.  
