@@ -6,6 +6,24 @@
 
 *System design challenge.* The hard parts aren't the crypto primitives — they're the distributed-systems problems your enterprise background makes you credible on: designing the mempool eviction policy, handling reorgs without corrupting the UTXO set, reasoning about eventual consistency across gossiping peers, and bounding state growth. Building UTXO rather than the easier account model is a deliberate signal that you understand *Bitcoin's* design, not just "a blockchain."
 
+## Quick demo start
+
+Open two PowerShell terminals:
+
+1. Terminal 1: start the blockchain node.
+   ```powershell
+   cd "D:\Github Projects\BlockChain\utxo-blockchain-node"
+   go run ./cmd/node
+   ```
+2. Terminal 2: start the frontend.
+   ```powershell
+   cd "D:\Github Projects\BlockChain\utxo-blockchain-node\web"
+   npm install
+   npm run dev
+   ```
+
+Then open <http://localhost:5173> in your browser.
+
 # Architecture
 
 `cmd/node`
