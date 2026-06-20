@@ -9,11 +9,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
 	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/api"
 	chainfmt "github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/chain"
+	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/storage"
 	"github.com/shaheer1300/BlockChain/utxo-blockchain-node/internal/types"
 )
 
@@ -21,12 +24,20 @@ import (
 
 // GetAllUTXOs returns every unspent output in the chain.
 func (s *nodeServices) GetAllUTXOs() ([]*types.UTXO, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.db.GetAllUTXOs()
 }
 
-// ListBlocks returns the most-recent `limit` blocks (newest first). When
-// `limit` is non-positive the configured default of 50 is used.
+// ListBlocks returns the most-recent `limit` blocks (newest first).
 func (s *nodeServices) ListBlocks(limit int) ([]api.BlockSummary, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.listBlocksNoLock(limit)
+}
+
+// listBlocksNoLock is the lock-free body of ListBlocks. Call while holding mu.
+func (s *nodeServices) listBlocksNoLock(limit int) ([]api.BlockSummary, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -34,8 +45,6 @@ func (s *nodeServices) ListBlocks(limit int) ([]api.BlockSummary, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Iterate from the tip backwards so callers always see the freshest
-	// blocks first.
 	out := make([]api.BlockSummary, 0, len(hashes))
 	start := len(hashes) - 1
 	for i := start; i >= 0 && len(out) < limit; i-- {
@@ -63,8 +72,13 @@ func (s *nodeServices) ListBlocks(limit int) ([]api.BlockSummary, error) {
 // ── api.DemoServices ─────────────────────────────────────────────────────────
 
 // DemoState bundles the snapshot the frontend needs after every action.
+// It acquires a single RLock and calls all internal helpers directly to
+// avoid reentrant lock acquisitions.
 func (s *nodeServices) DemoState() (*api.DemoStateResponse, error) {
-	wallets, err := s.DemoListWallets()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	wallets, err := s.demoListWalletsNoLock()
 	if err != nil {
 		return nil, err
 	}
@@ -75,12 +89,12 @@ func (s *nodeServices) DemoState() (*api.DemoStateResponse, error) {
 	if utxos == nil {
 		utxos = []*types.UTXO{}
 	}
-	blocks, err := s.ListBlocks(100)
+	blocks, err := s.listBlocksNoLock(100)
 	if err != nil {
 		return nil, err
 	}
 	return &api.DemoStateResponse{
-		Status:  s.Status(),
+		Status:  s.statusNoLock(),
 		Wallets: wallets,
 		UTXOs:   utxos,
 		Mempool: s.mp.Entries(),
@@ -90,6 +104,13 @@ func (s *nodeServices) DemoState() (*api.DemoStateResponse, error) {
 
 // DemoListWallets returns the current wallets with computed balances.
 func (s *nodeServices) DemoListWallets() ([]api.DemoWalletInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.demoListWalletsNoLock()
+}
+
+// demoListWalletsNoLock is the lock-free body. Call while holding mu.
+func (s *nodeServices) demoListWalletsNoLock() ([]api.DemoWalletInfo, error) {
 	if s.wallets == nil {
 		return []api.DemoWalletInfo{}, nil
 	}
@@ -128,11 +149,13 @@ func (s *nodeServices) DemoCreateWallet(name string) (api.DemoWalletInfo, error)
 // DemoBuildAndSubmitTx greedily selects UTXOs owned by FromWallet, builds
 // a signed transaction paying ToAddress, and submits it to the mempool.
 func (s *nodeServices) DemoBuildAndSubmitTx(req api.DemoTxRequest) (*api.DemoTxResult, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	tx, selected, change, err := s.buildSignedTx(req)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.SubmitTx(tx); err != nil {
+	if err := s.submitTxNoLock(tx); err != nil {
 		return nil, fmt.Errorf("submit: %w", err)
 	}
 	return makeTxResult(tx, selected, req.ToAddress, req.Amount, change), nil
@@ -141,6 +164,9 @@ func (s *nodeServices) DemoBuildAndSubmitTx(req api.DemoTxRequest) (*api.DemoTxR
 // DemoDoubleSpend builds two transactions consuming the same UTXOs and
 // submits them in sequence so the UI can show the second being rejected.
 func (s *nodeServices) DemoDoubleSpend(req api.DemoDoubleSpendRequest) (*api.DemoDoubleSpendResult, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	if s.wallets == nil {
 		return nil, errors.New("demo mode is not enabled")
 	}
@@ -149,7 +175,6 @@ func (s *nodeServices) DemoDoubleSpend(req api.DemoDoubleSpendRequest) (*api.Dem
 		return nil, fmt.Errorf("wallet %q not found", req.FromWallet)
 	}
 
-	// Build tx A
 	txA, _, _, err := s.buildSignedTx(api.DemoTxRequest{
 		FromWallet: req.FromWallet,
 		ToAddress:  req.ToAddressA,
@@ -159,9 +184,7 @@ func (s *nodeServices) DemoDoubleSpend(req api.DemoDoubleSpendRequest) (*api.Dem
 	if err != nil {
 		return nil, fmt.Errorf("build tx A: %w", err)
 	}
-	// Build tx B reusing the SAME UTXO inputs as tx A but paying ToAddressB.
-	// We do this by manually constructing a parallel transaction that
-	// references identical PrevOuts, then signing each input with w.
+
 	txB := &types.Transaction{
 		Version: txA.Version,
 		Inputs:  make([]types.TxInput, len(txA.Inputs)),
@@ -170,14 +193,12 @@ func (s *nodeServices) DemoDoubleSpend(req api.DemoDoubleSpendRequest) (*api.Dem
 		},
 		LockTime: txA.LockTime,
 	}
-	// Recompute change for B's output structure
 	totalIn := types.Amount(0)
 	for i, in := range txA.Inputs {
 		txB.Inputs[i] = types.TxInput{
 			PrevOut: in.PrevOut,
 			PubKey:  w.PubKeyCompressed(),
 		}
-		// look up value
 		u, gerr := s.db.GetUTXO(in.PrevOut)
 		if gerr != nil {
 			return nil, gerr
@@ -210,14 +231,12 @@ func (s *nodeServices) DemoDoubleSpend(req api.DemoDoubleSpendRequest) (*api.Dem
 	}
 
 	res := &api.DemoDoubleSpendResult{}
-	// Submit A first.
-	if err := s.SubmitTx(txA); err != nil {
+	if err := s.submitTxNoLock(txA); err != nil {
 		res.First = api.DemoSubmitOutcome{TxID: txA.TxID(), Accepted: false, Reason: err.Error()}
 	} else {
 		res.First = api.DemoSubmitOutcome{TxID: txA.TxID(), Accepted: true}
 	}
-	// Submit B second — expected to be rejected as a conflict.
-	if err := s.SubmitTx(txB); err != nil {
+	if err := s.submitTxNoLock(txB); err != nil {
 		res.Second = api.DemoSubmitOutcome{TxID: txB.TxID(), Accepted: false, Reason: err.Error()}
 	} else {
 		res.Second = api.DemoSubmitOutcome{TxID: txB.TxID(), Accepted: true}
@@ -225,15 +244,15 @@ func (s *nodeServices) DemoDoubleSpend(req api.DemoDoubleSpendRequest) (*api.Dem
 	return res, nil
 }
 
-// DemoMine mines one block; optionally with a specific wallet. When the
-// chain has not been initialised this call performs InitGenesis using
-// MinerWallet as the genesis miner.
+// DemoMine mines one block; optionally with a specific wallet.
 func (s *nodeServices) DemoMine(ctx context.Context, req api.DemoMineRequest) (*api.MineResult, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	if s.wallets == nil {
 		return nil, errors.New("demo mode is not enabled")
 	}
 
-	// Resolve the miner address: explicit wallet > configured MINER_ADDRESS.
 	var miner types.Address
 	switch {
 	case req.MinerWallet != "":
@@ -248,9 +267,6 @@ func (s *nodeServices) DemoMine(ctx context.Context, req api.DemoMineRequest) (*
 		return nil, errors.New("no miner wallet supplied and MINER_ADDRESS unset")
 	}
 
-	// If the chain hasn't been initialised, do it now using the resolved
-	// miner address. After this we fall through to the normal mining path
-	// (which mines block 1).
 	if s.chain.Tip() == nil {
 		if err := s.chain.InitGenesis(ctx, miner, chainfmt.InitialSubsidy, time.Now().Unix()); err != nil {
 			return nil, fmt.Errorf("init genesis: %w", err)
@@ -259,17 +275,15 @@ func (s *nodeServices) DemoMine(ctx context.Context, req api.DemoMineRequest) (*
 		return &api.MineResult{Hash: tip.Hash, Height: tip.Height}, nil
 	}
 
-	// Mine using the resolved miner. Temporarily swap minerAddr; this is
-	// safe because Mine reads s.minerAddr synchronously and the demo is
-	// single-user. We do NOT persist the swap.
+	// Temporarily use the resolved miner address for this call only.
 	prev := s.minerAddr
 	s.minerAddr = miner
 	defer func() { s.minerAddr = prev }()
-	return s.Mine(ctx)
+	return s.mineNoLock(ctx)
 }
 
-// DemoReset clears the mempool and wallets. Chain state on disk is
-// intentionally left intact — restart the node to fully wipe state.
+// DemoReset clears in-memory wallets and the mempool. On-disk chain state
+// is preserved; use DemoHardReset to wipe it entirely.
 func (s *nodeServices) DemoReset() error {
 	if s.wallets != nil {
 		if err := s.wallets.Reset(); err != nil {
@@ -280,9 +294,104 @@ func (s *nodeServices) DemoReset() error {
 	return nil
 }
 
+// DemoHardReset performs a full destructive reset of all demo state:
+//
+//  1. Clears the mempool and wallet store (in-memory + persisted file).
+//  2. Closes the bbolt database.
+//  3. Removes the data directory entirely (validated against the configured
+//     DataDir — will refuse to act on ".", "/", or empty paths).
+//  4. Recreates the data directory and reopens a fresh database.
+//  5. Reinitialises the chain manager (tip becomes nil, pre-genesis state).
+//  6. Rebuilds the wallet store file at the new path.
+//
+// The caller should trigger a fresh "Initialise demo" flow after this call.
+// The method holds the exclusive write lock for its duration, so all
+// concurrent API requests will block until the reset is complete (~50 ms).
+func (s *nodeServices) DemoHardReset(ctx context.Context) (*api.DemoStateResponse, error) {
+	// Acquire the exclusive write lock — all readers (other handlers) block
+	// until the reset is complete.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dataDir := filepath.Clean(s.cfg.DataDir)
+
+	// Safety guard: refuse obviously dangerous paths.
+	abs, err := filepath.Abs(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("hard reset: resolve data dir: %w", err)
+	}
+	if abs == "/" || abs == `\` || abs == filepath.VolumeName(abs)+`\` ||
+		abs == "." || dataDir == "" {
+		return nil, fmt.Errorf("hard reset: refusing unsafe data dir %q", abs)
+	}
+
+	// 1. Clear in-memory state that doesn't need db access.
+	s.mp.Clear()
+	if s.wallets != nil {
+		_ = s.wallets.Reset() // best-effort; file will be deleted anyway
+	}
+
+	// 2. Close the database before deleting its file.
+	if s.db != nil {
+		if err := s.db.Close(); err != nil {
+			return nil, fmt.Errorf("hard reset: close db: %w", err)
+		}
+		s.db = nil
+	}
+
+	// 3. Remove the entire data directory (chain.db + wallets.json + any
+	//    future files). We validated abs above.
+	if err := os.RemoveAll(abs); err != nil {
+		return nil, fmt.Errorf("hard reset: remove data dir %q: %w", abs, err)
+	}
+
+	// 4. Recreate the data directory.
+	if err := os.MkdirAll(abs, 0o750); err != nil {
+		return nil, fmt.Errorf("hard reset: recreate data dir: %w", err)
+	}
+
+	// 5. Reopen a fresh database.
+	dbPath := filepath.Join(abs, "chain.db")
+	newDB, err := storage.Open(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("hard reset: reopen db: %w", err)
+	}
+
+	// 6. Recreate the chain manager (tip will be nil — pre-genesis).
+	newChain, err := chainfmt.NewManager(newDB, s.powNibbles)
+	if err != nil {
+		_ = newDB.Close()
+		return nil, fmt.Errorf("hard reset: recreate chain manager: %w", err)
+	}
+
+	// 7. Swap in the new instances atomically (within the write lock).
+	s.db = newDB
+	s.chain = newChain
+
+	// 8. Rebuild the wallet store.
+	if s.wallets != nil {
+		walletsPath := filepath.Join(abs, "wallets.json")
+		ws, wsErr := newWalletStore(walletsPath)
+		if wsErr != nil {
+			return nil, fmt.Errorf("hard reset: recreate wallet store: %w", wsErr)
+		}
+		s.wallets = ws
+	}
+
+	// Return an empty state snapshot; the frontend will show the
+	// "Initialise demo" card and the user can start fresh.
+	return &api.DemoStateResponse{
+		Status:  s.statusNoLock(),
+		Wallets: []api.DemoWalletInfo{},
+		UTXOs:   []*types.UTXO{},
+		Mempool: []*types.MempoolEntry{},
+		Blocks:  []api.BlockSummary{},
+	}, nil
+}
+
 // ── shared helpers ───────────────────────────────────────────────────────────
 
-// balanceOf sums every UTXO owned by addr.
+// balanceOf sums every UTXO owned by addr. Call while holding mu (RLock or Lock).
 func (s *nodeServices) balanceOf(addr types.Address) (types.Amount, error) {
 	utxos, err := s.db.GetUTXOsByAddress(addr)
 	if err != nil {
@@ -299,10 +408,8 @@ func (s *nodeServices) balanceOf(addr types.Address) (types.Amount, error) {
 	return total, nil
 }
 
-// buildSignedTx selects UTXOs, constructs and signs a payment from
-// req.FromWallet to req.ToAddress paying req.Amount with req.Fee.
-// Returns the signed tx, the list of selected UTXOs, and the change
-// amount paid back to the sender (0 if no change output was created).
+// buildSignedTx selects UTXOs, constructs and signs a payment.
+// Call while holding mu (RLock or Lock).
 func (s *nodeServices) buildSignedTx(req api.DemoTxRequest) (*types.Transaction, []*types.UTXO, types.Amount, error) {
 	if s.wallets == nil {
 		return nil, nil, 0, errors.New("demo mode is not enabled")
@@ -322,7 +429,6 @@ func (s *nodeServices) buildSignedTx(req api.DemoTxRequest) (*types.Transaction,
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	// Greedy selection: largest-value UTXOs first to minimise input count.
 	sort.Slice(utxos, func(i, j int) bool { return utxos[i].Output.Value > utxos[j].Output.Value })
 
 	target, addErr := req.Amount.SafeAdd(req.Fee)

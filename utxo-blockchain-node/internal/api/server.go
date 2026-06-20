@@ -127,6 +127,7 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 		mux.HandleFunc("POST /demo/double-spend", s.handleDemoDoubleSpend)
 		mux.HandleFunc("POST /demo/mine", s.handleDemoMine)
 		mux.HandleFunc("POST /demo/reset", s.handleDemoReset)
+		mux.HandleFunc("POST /demo/hard-reset", s.handleDemoHardReset)
 	}
 }
 

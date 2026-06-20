@@ -115,14 +115,30 @@ export default function App() {
   }
 
   const handleReset = async () => {
-    if (!confirm('Reset wipes wallets + mempool. The on-disk chain stays. Continue?')) return
+    if (!confirm('Soft reset: clears wallets and mempool. On-disk chain blocks stay. Continue?')) return
     try {
       await api.reset()
       setSelectedWallet(null)
       await refresh()
-      showToast('ok', 'Demo state reset.')
+      showToast('ok', 'Demo state reset (wallets + mempool cleared).')
     } catch (e) {
       showToast('err', e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const handleHardReset = async () => {
+    if (!confirm(
+      'HARD RESET — This will delete the on-disk demo chain and reset ALL wallets, ' +
+      'UTXOs, mempool, and blocks.\n\nAfter reset you will need to click ' +
+      '"Initialise demo" again to start fresh.\n\nContinue?'
+    )) return
+    try {
+      const freshState = await api.hardReset()
+      setSelectedWallet(null)
+      setState(freshState)
+      showToast('ok', 'Demo fully reset. On-disk chain state cleared — click "Initialise demo" to begin.')
+    } catch (e) {
+      showToast('err', `Hard reset failed: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
@@ -136,6 +152,7 @@ export default function App() {
         status={state?.status}
         isPolling={isLive}
         onReset={handleReset}
+        onHardReset={handleHardReset}
         onExplain={setExplainTopic}
       />
 
