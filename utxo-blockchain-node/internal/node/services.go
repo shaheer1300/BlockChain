@@ -246,4 +246,3 @@ func (s *nodeServices) HandleReceivedBlock(_ context.Context, block *types.Block
 	}
 	return nil
 }
-
