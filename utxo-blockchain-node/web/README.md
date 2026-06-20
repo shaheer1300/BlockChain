@@ -37,6 +37,8 @@ and add `$env:DEMO_MODE = "1"` near the top, then `./scripts/run-node1.ps1`.
 
 ### 2. Start the frontend
 
+Open a second terminal for the frontend:
+
 ```powershell
 cd web
 npm install        # only the first time
