@@ -1,1 +1,10 @@
-# Phase 1 stub
+pox:
+  n_miners: 5
+  n_stackers: 3
+  base_block_time: 10.0
+  k_confirmations: 6
+  txs_per_pox_block: 20
+  mean_latency: 0.050
+  latency_std: 0.010
+  sim_duration: 2000.0
+  seed: 42
