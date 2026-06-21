@@ -1,0 +1,8 @@
+pow:
+  n_nodes: 10
+  target_block_time: 10.0
+  txs_per_block: 20
+  mean_latency: 0.100
+  latency_std: 0.020
+  sim_duration: 2000.0
+  seed: 42

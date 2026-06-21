@@ -1,0 +1,4 @@
+trial,throughput_tps,mean_finality_latency_s,fork_rate,safety_violations,liveness_failures,message_count
+0,1.988,61.2,0.006,0,0,600
+1,1.987998,61.2002,0.006001,0,0,602
+2,1.987996,61.2004,0.006002,0,0,603

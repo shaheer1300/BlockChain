@@ -1,0 +1,9 @@
+bft:
+  n_nodes: 10
+  f_byzantine: 0
+  round_timeout: 0.5
+  txs_per_block: 20
+  mean_latency: 0.050
+  latency_std: 0.010
+  sim_duration: 1000.0
+  seed: 42
