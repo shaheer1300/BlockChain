@@ -1336,5 +1336,3 @@ BFT       | X.XX ± Y.YY      | X.XX ± Y.YY    | 0.000     | 0
 PoX       | X.XX ± Y.YY      | XX.X ± YY.Y    | 0.000*    | 0
 * PoX fork rate is 0 at the PoX layer; base chain fork rate measured separately
 ```
-
----
