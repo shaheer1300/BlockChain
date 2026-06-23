@@ -1338,7 +1338,3 @@ PoX       | X.XX ± Y.YY      | XX.X ± YY.Y    | 0.000*    | 0
 ```
 
 ---
-
-*End of README — Consensus Measurement Testbed*
-
-*CEDAR Lab Portfolio | Abeer Ahmad | PhD CS, Stony Brook 2023*
